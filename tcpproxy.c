@@ -19,7 +19,7 @@
 #define BUFSIZE 131072
 
 void usage(char *progname) {
-  fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -l <log directory>\n", progname);
+  fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory>\n", progname);
 }
 
 int copy_message(int fromfd, int tofd, char *source, FILE *logfile) {
