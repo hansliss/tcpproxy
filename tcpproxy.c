@@ -22,17 +22,36 @@ void usage(char *progname) {
 }
 
 int copy_message(int fromfd, int tofd) {
-  static char buf[BUFSIZE];
+  static char buf[BUFSIZE + 1];
   int res = recv(fromfd, buf, BUFSIZE, 0);
   if (res == 0) {
     fprintf(stderr, "Broken connection\n");
     return 0;
   } else if (res < 0) {
-    perror("recv()");
+    if (res != ECONNRESET) {
+      perror("recv()");
+    }
     return 1;
   } else {
+    buf[res] = '\0';
     printf("[%d to %d]: |%s|\n", fromfd, tofd, buf);
-    int sres = send(tofd, buf, BUFSIZE, 0);
+#ifdef SPLIT
+    if (strstr(buf, "][")) {
+      char *s = buf;
+      char *p;
+      while (p = strchr(s + 1, '[')) {
+	*p = '\0';
+	printf("sending: |%s|\n", s);
+	int sres = send(tofd, s, strlen(s), 0);
+	if (sres == -1 && errno != EINTR) {
+	  return 0;
+	}
+	s=p;
+	*s='[';
+      }
+    }
+#endif
+    int sres = send(tofd, buf, res, 0);
     if (sres == -1 && errno != EINTR) {
       return 0;
     }
