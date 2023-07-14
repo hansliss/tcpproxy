@@ -10,6 +10,7 @@
 #include<netdb.h>
 #include<fcntl.h>
 #include<time.h>
+#include<sys/wait.h>
 
 #define ERR_SOCKFAIL -1
 #define ERR_BINDFAIL -2
@@ -17,6 +18,35 @@
 #define ERR_ACCEPTFAIL -4
 
 #define BUFSIZE 131072
+
+typedef struct childproc_s {
+  int pid;
+  struct childproc_s *next;
+} *childproc;
+
+void add_childproc(childproc *list, int pid) {
+  struct childproc_s *newchild = (struct childproc_s *)malloc(sizeof(struct childproc_s));
+  newchild->pid = pid;
+  newchild->next = *list;
+  *list = newchild;
+}
+
+void wait_for_children(childproc *list) {
+  int status;
+  while(*list) {
+    int res = waitpid((*list)->pid, &status, WNOHANG);
+    if (res == -1) {
+      perror("waitpid()");
+      list = &((*list)->next);
+    } else if (res > 0) {
+      childproc thisproc = *list;
+      *list = (*list)->next;
+      free(thisproc);
+    } else {
+      list = &((*list)->next);
+    }
+  }
+}
 
 void usage(char *progname) {
   fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory>\n", progname);
@@ -162,6 +192,7 @@ int dolisten(struct sockaddr *local_address,
 	     char *logdir) {
   int sockfd, connfd;
   struct sockaddr_in client_address;
+  childproc children = NULL;
   
   // socket create and verification
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -201,6 +232,7 @@ int dolisten(struct sockaddr *local_address,
 	close(connfd);
 	continue;
       } else if (pid > 0) {
+	add_childproc(&children, pid);
 	close(connfd);
 	continue;
       } else if (pid == 0) {
@@ -208,6 +240,7 @@ int dolisten(struct sockaddr *local_address,
 	exit(0);
       }
     }
+    wait_for_children(&children);
   }
   
   // close(sockfd);
