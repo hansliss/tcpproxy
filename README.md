@@ -35,3 +35,10 @@ pw,123456,ip,10.20.30.40,8001#
 A start script and systemd service definition is included for reference.
 
 Additions and fixes are welcome.
+
+## TODO
+The wait() code is a bit iffy, since the main loop blocks on the accept() call. Zombie children
+will usually be present since they are only reaped upon new connections. To fix, add a select()
+call before the accept(), and give it a suitable timeout to allow housekeeping to be performed
+regularly. I may not bother to fix this minor issue, but if anyone else cares to fix it, please
+submit a pull request! :)
