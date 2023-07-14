@@ -19,6 +19,19 @@
 
 #define BUFSIZE 131072
 
+void logerror(char *message, char *logdir) {
+  static char time_buf[20], filenamebuf[BUFSIZE];
+  time_t t;
+  struct tm* tm_info;
+  t = time(NULL);
+  tm_info = localtime(&t);
+  strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+  sprintf(filenamebuf, "%s/errors.log", logdir);
+  FILE *logfile = fopen(filenamebuf, "a");
+  fprintf(logfile, "%s\t%s: %m\n", time_buf, message);
+  fclose(logfile);
+}
+
 typedef struct childproc_s {
   int pid;
   struct childproc_s *next;
@@ -31,12 +44,12 @@ void add_childproc(childproc *list, int pid) {
   *list = newchild;
 }
 
-void wait_for_children(childproc *list) {
+void wait_for_children(childproc *list, char *logdir) {
   int status;
   while(*list) {
     int res = waitpid((*list)->pid, &status, WNOHANG);
     if (res == -1) {
-      perror("waitpid()");
+      logerror("waitpid()", logdir);
       list = &((*list)->next);
     } else if (res > 0) {
       childproc thisproc = *list;
@@ -52,7 +65,7 @@ void usage(char *progname) {
   fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory>\n", progname);
 }
 
-int copy_message(int fromfd, int tofd, char *source, FILE *logfile) {
+int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir) {
   static char buf[BUFSIZE + 1];
   static char time_buf[20];
   time_t t;
@@ -62,11 +75,11 @@ int copy_message(int fromfd, int tofd, char *source, FILE *logfile) {
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
   int res = recv(fromfd, buf, BUFSIZE, 0);
   if (res == 0) {
-    // fprintf(stderr, "Broken connection\n");
+    logerror("Broken connection", logdir);
     return 0;
   } else if (res < 0) {
     if (res != ECONNRESET) {
-      perror("recv()");
+      logerror("recv()", logdir);
     }
     return 1;
   } else {
@@ -138,12 +151,12 @@ void handle_connection(int client_fd,
   int remote_fd;
   remote_fd=socket(AF_INET,SOCK_STREAM,0);
   if (remote_fd == -1) {
-    perror("socket()");
+    logerror("socket()", logdir);
     return;
   }
 
   if(connect(remote_fd, remote_address, remote_addrlen)==-1) {
-    perror("connect()");
+    logerror("connect()", logdir);
     return;
   }
   fd_set my_set;
@@ -163,18 +176,18 @@ void handle_connection(int client_fd,
     if ( rc == -1 ) {
       if ( errno == EINTR )
 	continue;
-      perror("select()");
+      logerror("select()", logdir);
       fclose(logfile);
       close(client_fd);
       close(remote_fd);
       return;
     }
     if (FD_ISSET(client_fd, &wk_set)) {
-      if (!copy_message(client_fd, remote_fd, "client", logfile)) {
+      if (!copy_message(client_fd, remote_fd, "client", logfile, logdir)) {
 	break;
       }
     } else if (FD_ISSET(remote_fd, &wk_set)) {
-      if (!copy_message(remote_fd, client_fd, "server", logfile)) {
+      if (!copy_message(remote_fd, client_fd, "server", logfile, logdir)) {
 	break;
       }
     }
@@ -202,33 +215,34 @@ int dolisten(struct sockaddr *local_address,
   }
 
   if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
-    perror("SO_REUSEADDR");
+    logerror("SO_REUSEADDR", logdir);
   }
 
   // Binding newly created socket to given IP and verification
   if ((bind(sockfd, local_address, local_addrlen)) != 0) {
-    perror("bind()");
+    logerror("bind()", logdir);
     return ERR_BINDFAIL;
   }
   
   // Now server is ready to listen and verification
   if ((listen(sockfd, 5)) != 0) {
-    perror("listen()");
+    logerror("listen()", logdir);
     return ERR_LISTENFAIL;
   }
 
   
   while (1) {
+    wait_for_children(&children, logdir);
     socklen_t len = sizeof(client_address);
     int pid;
     
     // Accept the data packet from client and verification
     connfd = accept(sockfd, (struct sockaddr*)&client_address, &len);
     if (connfd < 0) {
-      perror("accept()");
+      logerror("accept()", logdir);
     } else {
       if ((pid = fork()) == -1) {
-	perror("fork()");
+	logerror("fork()", logdir);
 	close(connfd);
 	continue;
       } else if (pid > 0) {
@@ -240,7 +254,6 @@ int dolisten(struct sockaddr *local_address,
 	exit(0);
       }
     }
-    wait_for_children(&children);
   }
   
   // close(sockfd);

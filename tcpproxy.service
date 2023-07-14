@@ -1,0 +1,14 @@
+[Unit]
+Description=TCP Proxy for TKSTAR GPS trackers
+ConditionPathIsMountPoint=/opt
+
+[Service]
+Type=simple
+ExecStart=/opt/tcpproxy/bin/runproxy.sh 0.0.0.0:7700 47.88.85.196:7700 /opt/tcpproxy/log /var/run/tcpproxy.pid
+ExecStop=kill `cat /var/run/tcpproxy.pid`
+StandardOutput=null
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
