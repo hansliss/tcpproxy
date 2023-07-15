@@ -84,7 +84,9 @@ int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir
     return 1;
   } else {
     buf[res] = '\0';
-    fprintf(logfile, "%s\t%s\t%s\n", time_buf, source, buf);
+    fprintf(logfile, "%s\t%s\t", time_buf, source);
+    fwrite(buf, 1, res, logfile);
+    fprintf(logfile, "\n");
     fflush(logfile);
 #ifdef SPLIT
     if (strstr(buf, "][")) {
@@ -172,8 +174,7 @@ void handle_connection(int client_fd,
   while (1) {
     memcpy(&wk_set, &my_set, sizeof(my_set));
     
-    int rc = select(max_fd + 1, &wk_set, NULL, NULL, NULL);
-    if ( rc == -1 ) {
+    if (select(max_fd + 1, &wk_set, NULL, NULL, NULL) == -1) {
       if ( errno == EINTR )
 	continue;
       logerror("select()", logdir);
@@ -231,32 +232,55 @@ int dolisten(struct sockaddr *local_address,
   }
 
   
+  fd_set my_set;
+  fd_set wk_set;
+  
+  FD_ZERO(&my_set);         /* initialize  fd_set */
+  FD_SET(sockfd, &my_set);  /* put listener into fd_set */
+  int max_fd = sockfd;
+  int select_status;
+  
+  struct timeval timeout;
+  
   while (1) {
     wait_for_children(&children, logdir);
     socklen_t len = sizeof(client_address);
     int pid;
     
-    // Accept the data packet from client and verification
-    connfd = accept(sockfd, (struct sockaddr*)&client_address, &len);
-    if (connfd < 0) {
-      logerror("accept()", logdir);
-    } else {
-      if ((pid = fork()) == -1) {
-	logerror("fork()", logdir);
-	close(connfd);
-	continue;
-      } else if (pid > 0) {
-	add_childproc(&children, pid);
-	close(connfd);
-	continue;
-      } else if (pid == 0) {
-	handle_connection(connfd, (struct sockaddr *)&client_address, len, remote_address, remote_addrlen, logdir);
-	exit(0);
+    memcpy(&wk_set, &my_set, sizeof(my_set));
+    memset(&timeout, 0, sizeof(timeout));
+    timeout.tv_sec  = 5;
+    timeout.tv_usec = 0;
+    
+    if ((select_status = select(max_fd + 1, &wk_set, NULL, NULL, &timeout)) < 0) {
+      logerror("select()", logdir);
+      break;
+    }
+
+    if (select_status > 0 && FD_ISSET(sockfd, &wk_set)) {
+
+      // Accept the data packet from client and verification
+      connfd = accept(sockfd, (struct sockaddr*)&client_address, &len);
+      if (connfd < 0) {
+	logerror("accept()", logdir);
+      } else {
+	if ((pid = fork()) == -1) {
+	  logerror("fork()", logdir);
+	  close(connfd);
+	  continue;
+	} else if (pid > 0) {
+	  add_childproc(&children, pid);
+	  close(connfd);
+	  continue;
+	} else if (pid == 0) {
+	  handle_connection(connfd, (struct sockaddr *)&client_address, len, remote_address, remote_addrlen, logdir);
+	  exit(0);
+	}
       }
     }
   }
-  
-  // close(sockfd);
+  close(sockfd);
+  return 0;
 }
 
 /*
