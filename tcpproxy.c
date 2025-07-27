@@ -78,32 +78,16 @@ int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir
     logerror("Broken connection", logdir);
     return 0;
   } else if (res < 0) {
-    if (res != ECONNRESET) {
+    if (errno != ECONNRESET) {
       logerror("recv()", logdir);
     }
-    return 1;
+    return 0;
   } else {
     buf[res] = '\0';
     fprintf(logfile, "%s\t%s\t", time_buf, source);
     fwrite(buf, 1, res, logfile);
     fprintf(logfile, "\n");
     fflush(logfile);
-#ifdef SPLIT
-    if (strstr(buf, "][")) {
-      char *s = buf;
-      char *p;
-      while (p = strchr(s + 1, '[')) {
-	*p = '\0';
-	printf("sending: |%s|\n", s);
-	int sres = send(tofd, s, strlen(s), 0);
-	if (sres == -1 && errno != EINTR) {
-	  return 0;
-	}
-	s=p;
-	*s='[';
-      }
-    }
-#endif
     int sres = send(tofd, buf, res, 0);
     if (sres == -1 && errno != EINTR) {
       return 0;
