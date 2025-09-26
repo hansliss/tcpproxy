@@ -60,6 +60,21 @@ binary:
 TCPPROXY_BIN=$(pwd)/build/tcpproxy tests/run_proxy_tests.py
 ```
 
+## Observer Events
+An optional observer can mirror the proxied traffic and emit parsed tracker
+messages to a separate logfile without altering the live TCP stream. Enable it
+with the `-O` flag and point it at an event file:
+
+```
+tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /opt/tcpproxy/log -O file=/opt/tcpproxy/events.log
+```
+
+Each observer line records the chunk timestamp, direction (`client` or
+`server`), the source IP address, the connection identifier, and the bracketed
+payload detected by the parser. The parsing logic lives in dedicated observer
+modules so future processing—such as raising AMQP events—can evolve without
+touching the core proxy loop.
+
 ## Test Harness
 An end-to-end test harness lives under `tests/` and exercises the proxy with a
 local client and server pair. Build `tcpproxy` and then run

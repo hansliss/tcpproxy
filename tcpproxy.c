@@ -12,6 +12,8 @@
 #include<time.h>
 #include<sys/wait.h>
 
+#include "observer.h"
+
 #define ERR_SOCKFAIL -1
 #define ERR_BINDFAIL -2
 #define ERR_LISTENFAIL -3
@@ -65,7 +67,13 @@ void usage(char *progname) {
   fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory>\n", progname);
 }
 
-int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir) {
+int copy_message(int fromfd,
+                 int tofd,
+                 char *source,
+                 FILE *logfile,
+                 char *logdir,
+                 struct observer_instance *observer,
+                 enum observer_direction direction) {
   static char buf[BUFSIZE + 1];
   static char time_buf[20];
   time_t t;
@@ -88,6 +96,7 @@ int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir
     fwrite(buf, 1, res, logfile);
     fprintf(logfile, "\n");
     fflush(logfile);
+    observer_instance_record(observer, direction, time_buf, buf, res);
     int total_sent = 0;
     while (total_sent < res) {
       int sres = send(tofd, buf + total_sent, res - total_sent, 0);
@@ -136,7 +145,8 @@ void handle_connection(int client_fd,
 		       socklen_t client_addrlen,
 		       struct sockaddr *remote_address,
 		       socklen_t remote_addrlen,
-		       char *logdir) {
+		       char *logdir,
+		       struct observer_global *observer_global) {
   static char log_filename[BUFSIZE];
   static char time_buf[20], addr_buf[BUFSIZE];
   time_t t;
@@ -146,7 +156,8 @@ void handle_connection(int client_fd,
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d_%H%M%S", tm_info);
   sprintf(log_filename, "%s/%s_%s.log", logdir, time_buf, get_ip_str(client_address, addr_buf, BUFSIZE));
   FILE *logfile = fopen(log_filename, "a");
-  
+  struct observer_instance *observer = NULL;
+
   int remote_fd;
   remote_fd=socket(AF_INET,SOCK_STREAM,0);
   if (remote_fd == -1) {
@@ -156,8 +167,12 @@ void handle_connection(int client_fd,
 
   if(connect(remote_fd, remote_address, remote_addrlen)==-1) {
     logerror("connect()", logdir);
+    fclose(logfile);
+    close(client_fd);
+    close(remote_fd);
     return;
   }
+  observer = observer_instance_create(observer_global, time_buf, addr_buf);
   fd_set my_set;
   fd_set wk_set;
   
@@ -182,10 +197,11 @@ void handle_connection(int client_fd,
       fclose(logfile);
       close(client_fd);
       close(remote_fd);
+      observer_instance_close(observer);
       return;
     }
     if (client_open && FD_ISSET(client_fd, &wk_set)) {
-      if (!copy_message(client_fd, remote_fd, "client", logfile, logdir)) {
+      if (!copy_message(client_fd, remote_fd, "client", logfile, logdir, observer, OBSERVER_DIR_CLIENT)) {
         client_open = 0;
         if (shutdown(remote_fd, SHUT_WR) == -1 && errno != ENOTCONN) {
           logerror("shutdown()", logdir);
@@ -193,7 +209,7 @@ void handle_connection(int client_fd,
       }
     }
     if (remote_open && FD_ISSET(remote_fd, &wk_set)) {
-      if (!copy_message(remote_fd, client_fd, "server", logfile, logdir)) {
+      if (!copy_message(remote_fd, client_fd, "server", logfile, logdir, observer, OBSERVER_DIR_SERVER)) {
         remote_open = 0;
         if (shutdown(client_fd, SHUT_WR) == -1 && errno != ENOTCONN) {
           logerror("shutdown()", logdir);
@@ -204,6 +220,7 @@ void handle_connection(int client_fd,
   fclose(logfile);
   close(client_fd);
   close(remote_fd);
+  observer_instance_close(observer);
   return;
 }
 
@@ -211,7 +228,8 @@ int dolisten(struct sockaddr *local_address,
 	     socklen_t local_addrlen,
 	     struct sockaddr *remote_address,
 	     socklen_t remote_addrlen,
-	     char *logdir) {
+	     char *logdir,
+	     struct observer_global *observer_global) {
   int sockfd, connfd;
   struct sockaddr_in client_address;
   childproc children = NULL;
@@ -281,7 +299,13 @@ int dolisten(struct sockaddr *local_address,
 	  close(connfd);
 	  continue;
 	} else if (pid == 0) {
-	  handle_connection(connfd, (struct sockaddr *)&client_address, len, remote_address, remote_addrlen, logdir);
+	  handle_connection(connfd,
+			  (struct sockaddr *)&client_address,
+			  len,
+			  remote_address,
+			  remote_addrlen,
+			  logdir,
+			  observer_global);
 	  exit(0);
 	}
       }
@@ -342,8 +366,10 @@ int main(int argc, char *argv[]) {
   char *remote_address_string = NULL;
   char *local_address_string = NULL;
   char *logdir = NULL;
+  char *observer_config_string = NULL;
+  struct observer_global *observer_global = NULL;
 
-  while ((o=getopt(argc, argv, "l:r:o:"))!=-1) {
+  while ((o=getopt(argc, argv, "l:r:o:O:"))!=-1) {
     switch (o) {
     case 'l':
       local_address_string = optarg;
@@ -357,6 +383,9 @@ int main(int argc, char *argv[]) {
 	logdir[strlen(logdir) - 1] = '\0';
       }
       break;
+    case 'O':
+      observer_config_string = optarg;
+      break;
     default:
       usage(argv[0]);
       return -1;
@@ -369,5 +398,15 @@ int main(int argc, char *argv[]) {
   }
   parseaddr(local_address_string, &local_address);
   parseaddr(remote_address_string, &remote_address);
-  dolisten(local_address->ai_addr, local_address->ai_addrlen, remote_address->ai_addr, remote_address->ai_addrlen, logdir);
+  if (observer_global_init(observer_config_string, &observer_global) != 0) {
+    fprintf(stderr, "Unable to initialize observer configuration.\n");
+    return -1;
+  }
+  dolisten(local_address->ai_addr,
+	   local_address->ai_addrlen,
+	   remote_address->ai_addr,
+	   remote_address->ai_addrlen,
+	   logdir,
+	   observer_global);
+  observer_global_free(observer_global);
 }
