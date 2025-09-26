@@ -35,3 +35,46 @@ pw,123456,ip,10.20.30.40,8001#
 A start script and systemd service definition is included for reference.
 
 Additions and fixes are welcome.
+
+## Building
+This project now uses CMake. A typical build from the repository root looks like:
+
+```
+mkdir -p build
+cmake -S . -B build
+cmake --build build
+```
+
+Install to a prefix (optional) with `cmake --install build --prefix /desired/path`.
+
+To run the end-to-end test harness after building, you can invoke either
+
+```
+cmake --build build --target proxy-tests
+```
+
+or run the Python script directly while pointing it at the freshly built
+binary:
+
+```
+TCPPROXY_BIN=$(pwd)/build/tcpproxy tests/run_proxy_tests.py
+```
+
+## Test Harness
+An end-to-end test harness lives under `tests/` and exercises the proxy with a
+local client and server pair. Build `tcpproxy` and then run
+
+```
+tests/run_proxy_tests.py
+```
+
+The script starts a disposable echo server, brings up the proxy via
+`tests/start_proxy.sh`, and runs several scenarios:
+- basic request/response echo
+- large payload forwarding (covers partial `send` writes)
+- remote host dropping the connection mid-stream
+- client closing without reading responses
+- server-initiated data before any client payload
+
+Use `--test <name>` to run a single case or `--keep-logs` to preserve the
+generated per-test logs under `tests/logs/` for inspection.
