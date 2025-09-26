@@ -88,8 +88,21 @@ int copy_message(int fromfd, int tofd, char *source, FILE *logfile, char *logdir
     fwrite(buf, 1, res, logfile);
     fprintf(logfile, "\n");
     fflush(logfile);
-    int sres = send(tofd, buf, res, 0);
-    if (sres == -1 && errno != EINTR) {
+    int total_sent = 0;
+    while (total_sent < res) {
+      int sres = send(tofd, buf + total_sent, res - total_sent, 0);
+      if (sres > 0) {
+        total_sent += sres;
+        continue;
+      }
+      if (sres == 0) {
+        logerror("send()", logdir);
+        return 0;
+      }
+      if (sres == -1 && errno == EINTR) {
+        continue;
+      }
+      logerror("send()", logdir);
       return 0;
     }
   }
@@ -148,16 +161,20 @@ void handle_connection(int client_fd,
   fd_set my_set;
   fd_set wk_set;
   
-  FD_ZERO(&my_set);         /* initialize  fd_set */
-  FD_SET(client_fd, &my_set);  /* put listener into fd_set */
-  FD_SET(remote_fd, &my_set);  /* put listener into fd_set */
-  int max_fd = client_fd;
-  if (remote_fd > client_fd) {
-    max_fd = remote_fd;
-  }
-  while (1) {
-    memcpy(&wk_set, &my_set, sizeof(my_set));
-    
+  FD_ZERO(&my_set);
+  int client_open = 1;
+  int remote_open = 1;
+  int max_fd = client_fd > remote_fd ? client_fd : remote_fd;
+  while (client_open || remote_open) {
+    FD_ZERO(&my_set);
+    if (client_open) {
+      FD_SET(client_fd, &my_set);
+    }
+    if (remote_open) {
+      FD_SET(remote_fd, &my_set);
+    }
+    memcpy(&wk_set, &my_set, sizeof(fd_set));
+
     if (select(max_fd + 1, &wk_set, NULL, NULL, NULL) == -1) {
       if ( errno == EINTR )
 	continue;
@@ -167,13 +184,20 @@ void handle_connection(int client_fd,
       close(remote_fd);
       return;
     }
-    if (FD_ISSET(client_fd, &wk_set)) {
+    if (client_open && FD_ISSET(client_fd, &wk_set)) {
       if (!copy_message(client_fd, remote_fd, "client", logfile, logdir)) {
-	break;
+        client_open = 0;
+        if (shutdown(remote_fd, SHUT_WR) == -1 && errno != ENOTCONN) {
+          logerror("shutdown()", logdir);
+        }
       }
-    } else if (FD_ISSET(remote_fd, &wk_set)) {
+    }
+    if (remote_open && FD_ISSET(remote_fd, &wk_set)) {
       if (!copy_message(remote_fd, client_fd, "server", logfile, logdir)) {
-	break;
+        remote_open = 0;
+        if (shutdown(client_fd, SHUT_WR) == -1 && errno != ENOTCONN) {
+          logerror("shutdown()", logdir);
+        }
       }
     }
   }
@@ -345,5 +369,5 @@ int main(int argc, char *argv[]) {
   }
   parseaddr(local_address_string, &local_address);
   parseaddr(remote_address_string, &remote_address);
-  dolisten(local_address->ai_addr, local_address->ai_addrlen, remote_address->ai_addr, local_address->ai_addrlen, logdir);
+  dolisten(local_address->ai_addr, local_address->ai_addrlen, remote_address->ai_addr, remote_address->ai_addrlen, logdir);
 }

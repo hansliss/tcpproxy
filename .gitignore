@@ -5,3 +5,10 @@ Makefile
 config.h
 config.log
 config.status
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+build/
+tests/logs/*
