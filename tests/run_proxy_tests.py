@@ -9,7 +9,7 @@ import time
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
@@ -43,6 +43,7 @@ class TestCase:
     description: str
     server_options: Dict[str, object]
     client_action: Callable[[int], None]
+    event_check: Optional[Callable[[Path], None]] = None
 
 
 def get_free_port() -> int:
@@ -103,11 +104,16 @@ def resolve_proxy_binary() -> Path:
     )
 
 
-def start_proxy(local_port: int, remote_port: int, logdir: Path) -> ManagedProcess:
+def start_proxy(local_port: int,
+                remote_port: int,
+                logdir: Path,
+                observer_config: Optional[str]) -> ManagedProcess:
     proxy_bin = resolve_proxy_binary()
     local = f"127.0.0.1:{local_port}"
     remote = f"127.0.0.1:{remote_port}"
     cmd = [str(proxy_bin), "-l", local, "-r", remote, "-o", str(logdir)]
+    if observer_config:
+        cmd.extend(["-O", observer_config])
     proxy_log = open(logdir / "proxy.log", "wb")
     proc = subprocess.Popen(cmd, stdout=proxy_log, stderr=subprocess.STDOUT)
     wait_for_port("127.0.0.1", local_port)
@@ -170,6 +176,21 @@ def client_server_push(port: int) -> None:
             raise AssertionError("Did not receive expected server greeting")
 
 
+def client_tracker_message(port: int) -> None:
+    payload = b"[SG*1234567890*0005*LK]"
+    reply = send_and_receive(port, payload)
+    if reply != payload:
+        raise AssertionError("Tracker message mismatch")
+
+
+def expect_tracker_event(log_path: Path) -> None:
+    if not log_path.exists():
+        raise AssertionError("Observer log not created")
+    contents = log_path.read_text(encoding="utf-8")
+    if "[SG*" not in contents:
+        raise AssertionError("Expected bracketed tracker message in observer log")
+
+
 TESTS = [
     TestCase(
         name="basic_echo",
@@ -201,6 +222,13 @@ TESTS = [
         server_options={"response": "server says hi"},
         client_action=client_server_push,
     ),
+    TestCase(
+        name="tracker_message",
+        description="Bracketed tracker-style payloads are parsed by the observer",
+        server_options={"echo": True},
+        client_action=client_tracker_message,
+        event_check=expect_tracker_event,
+    ),
 ]
 
 
@@ -208,11 +236,17 @@ def run_test_case(test: TestCase, keep_logs: bool = False) -> bool:
     remote_port = get_free_port()
     local_port = get_free_port()
     test_logdir = Path(tempfile.mkdtemp(prefix=f"{test.name}-", dir=str(LOG_ROOT)))
+    observer_log = test_logdir / "observer_events.log"
     server = proxy = None
     try:
         server = start_server(remote_port, test.server_options, test_logdir)
-        proxy = start_proxy(local_port, remote_port, test_logdir)
+        proxy = start_proxy(local_port,
+                            remote_port,
+                            test_logdir,
+                            f"file={observer_log}")
         test.client_action(local_port)
+        if test.event_check:
+            test.event_check(observer_log)
         return True
     except Exception as exc:  # pylint: disable=broad-except
         print(f"Test '{test.name}' failed: {exc}")

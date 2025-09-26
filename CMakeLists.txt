@@ -7,6 +7,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 add_executable(tcpproxy
   tcpproxy.c
+  observer.c
+  tracker_parser.c
 )
 
 target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")
