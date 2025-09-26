@@ -121,7 +121,11 @@ int copy_message(int fromfd,
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
   int res = recv(fromfd, buf, BUFSIZE, 0);
   if (res == 0) {
-    logerror("Broken connection", logdir);
+    if (direction == OBSERVER_DIR_CLIENT) {
+      logerror("Broken connection (client side)", logdir);
+    } else {
+      logerror("Broken connection (server side)", logdir);
+    }
     return 0;
   } else if (res < 0) {
     if (errno != ECONNRESET) {
