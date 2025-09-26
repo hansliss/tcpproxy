@@ -12,3 +12,4 @@ CMakeFiles/
 cmake_install.cmake
 build/
 tests/logs/*
+codex_resume.sh
