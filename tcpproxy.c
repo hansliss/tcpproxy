@@ -11,8 +11,25 @@
 #include<fcntl.h>
 #include<time.h>
 #include<sys/wait.h>
+#include<limits.h>
 
 #include "observer.h"
+
+#define CONTEXT_LENGTH 256
+
+static char current_log_context[CONTEXT_LENGTH] = "proxy";
+
+static void log_set_context(const char *context) {
+  if (!context || !*context) {
+    snprintf(current_log_context, sizeof(current_log_context), "%s", "proxy");
+    return;
+  }
+  snprintf(current_log_context, sizeof(current_log_context), "%s", context);
+}
+
+static const char *log_get_context(void) {
+  return current_log_context;
+}
 
 #define ERR_SOCKFAIL -1
 #define ERR_BINDFAIL -2
@@ -25,13 +42,34 @@ void logerror(char *message, char *logdir) {
   static char time_buf[20], filenamebuf[BUFSIZE];
   time_t t;
   struct tm* tm_info;
+  int saved_errno = errno;
   t = time(NULL);
   tm_info = localtime(&t);
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
-  sprintf(filenamebuf, "%s/errors.log", logdir);
+  snprintf(filenamebuf, sizeof(filenamebuf), "%s/errors.log", logdir);
   FILE *logfile = fopen(filenamebuf, "a");
-  fprintf(logfile, "%s\t%s: %m\n", time_buf, message);
+  if (!logfile) {
+    fprintf(stderr, "%s\t%s\t%s (errno=%d: %s)\n",
+            time_buf,
+            log_get_context(),
+            message,
+            saved_errno,
+            saved_errno ? strerror(saved_errno) : "no errno");
+    errno = saved_errno;
+    return;
+  }
+  fprintf(logfile, "%s\t%s\t%s",
+          time_buf,
+          log_get_context(),
+          message);
+  if (saved_errno) {
+    fprintf(logfile, " (errno=%d: %s)", saved_errno, strerror(saved_errno));
+  } else {
+    fprintf(logfile, " (no errno)");
+  }
+  fprintf(logfile, "\n");
   fclose(logfile);
+  errno = saved_errno;
 }
 
 typedef struct childproc_s {
@@ -64,7 +102,7 @@ void wait_for_children(childproc *list, char *logdir) {
 }
 
 void usage(char *progname) {
-  fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory>\n", progname);
+  fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-O <observer config>]\n", progname);
 }
 
 int copy_message(int fromfd,
@@ -148,13 +186,38 @@ void handle_connection(int client_fd,
 		       char *logdir,
 		       struct observer_global *observer_global) {
   static char log_filename[BUFSIZE];
-  static char time_buf[20], addr_buf[BUFSIZE];
+  static char time_buf[20], addr_buf[BUFSIZE], remote_buf[BUFSIZE];
+  char context[CONTEXT_LENGTH];
   time_t t;
   struct tm* tm_info;
   t = time(NULL);
   tm_info = localtime(&t);
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d_%H%M%S", tm_info);
-  sprintf(log_filename, "%s/%s_%s.log", logdir, time_buf, get_ip_str(client_address, addr_buf, BUFSIZE));
+  const char *client_ip = get_ip_str(client_address, addr_buf, BUFSIZE);
+  const char *remote_ip = get_ip_str(remote_address, remote_buf, BUFSIZE);
+  int client_port = 0;
+  int remote_port = 0;
+  if (client_address->sa_family == AF_INET) {
+    client_port = ntohs(((struct sockaddr_in *)client_address)->sin_port);
+  }
+  if (remote_address->sa_family == AF_INET) {
+    remote_port = ntohs(((struct sockaddr_in *)remote_address)->sin_port);
+  }
+  snprintf(log_filename, sizeof(log_filename), "%s/%s_%s.log", logdir, time_buf, client_ip ? client_ip : "unknown");
+  if (remote_ip && remote_port) {
+    snprintf(context, sizeof(context), "conn=%s client=%s:%d remote=%s:%d",
+             time_buf,
+             client_ip ? client_ip : "unknown",
+             client_port,
+             remote_ip,
+             remote_port);
+  } else {
+    snprintf(context, sizeof(context), "conn=%s client=%s:%d",
+             time_buf,
+             client_ip ? client_ip : "unknown",
+             client_port);
+  }
+  log_set_context(context);
   FILE *logfile = fopen(log_filename, "a");
   struct observer_instance *observer = NULL;
 
@@ -173,6 +236,9 @@ void handle_connection(int client_fd,
     return;
   }
   observer = observer_instance_create(observer_global, time_buf, addr_buf);
+  if (observer_global && !observer) {
+    logerror("observer_instance_create()", logdir);
+  }
   fd_set my_set;
   fd_set wk_set;
   
@@ -233,6 +299,31 @@ int dolisten(struct sockaddr *local_address,
   int sockfd, connfd;
   struct sockaddr_in client_address;
   childproc children = NULL;
+  char listener_context[CONTEXT_LENGTH];
+  char local_buf[BUFSIZE];
+  char remote_buf[BUFSIZE];
+  const char *local_ip = get_ip_str(local_address, local_buf, BUFSIZE);
+  const char *remote_ip = get_ip_str(remote_address, remote_buf, BUFSIZE);
+  int local_port = 0;
+  int remote_port = 0;
+  if (local_address->sa_family == AF_INET) {
+    local_port = ntohs(((struct sockaddr_in *)local_address)->sin_port);
+  }
+  if (remote_address->sa_family == AF_INET) {
+    remote_port = ntohs(((struct sockaddr_in *)remote_address)->sin_port);
+  }
+  if (remote_ip && remote_port) {
+    snprintf(listener_context, sizeof(listener_context), "listener local=%s:%d remote=%s:%d",
+             local_ip ? local_ip : "unknown",
+             local_port,
+             remote_ip,
+             remote_port);
+  } else {
+    snprintf(listener_context, sizeof(listener_context), "listener local=%s:%d",
+             local_ip ? local_ip : "unknown",
+             local_port);
+  }
+  log_set_context(listener_context);
   
   // socket create and verification
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -368,6 +459,8 @@ int main(int argc, char *argv[]) {
   char *logdir = NULL;
   char *observer_config_string = NULL;
   struct observer_global *observer_global = NULL;
+
+  log_set_context("main");
 
   while ((o=getopt(argc, argv, "l:r:o:O:"))!=-1) {
     switch (o) {
