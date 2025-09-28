@@ -335,10 +335,13 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             raise AssertionError("Tracker event not JSON")
 
         expected_position = "at the back of the house"
+        expected_tracker = "1234567890"
         for idx, event in enumerate((location_results_primary[0], location_results_secondary[0]), start=1):
             if isinstance(event, dict):
                 if event.get("position") != expected_position:
                     raise AssertionError(f"Location mismatch (consumer {idx})")
+                if event.get("tracker_id") != expected_tracker:
+                    raise AssertionError(f"Tracker ID mismatch (consumer {idx})")
             else:
                 raise AssertionError(f"Location event {idx} not JSON")
         if verbose:

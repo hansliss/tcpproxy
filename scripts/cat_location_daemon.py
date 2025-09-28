@@ -74,17 +74,18 @@ class LocationResolver:
         return best_name
 
 
-def parse_tracker_payload(payload: str) -> Optional[Tuple[float, float]]:
+def parse_tracker_payload(payload: str) -> Optional[Tuple[str, float, float]]:
     match = UD_PATTERN.match(payload)
     if not match:
         return None
+    device = match.group('device')
     lat = float(match.group('lat'))
     if match.group('ns') == 'S':
         lat = -lat
     lon = float(match.group('lon'))
     if match.group('ew') == 'W':
         lon = -lon
-    return lat, lon
+    return device, lat, lon
 
 
 class LocationPublisher:
@@ -102,13 +103,14 @@ class LocationPublisher:
         coords = parse_tracker_payload(payload)
         if not coords:
             return
-        latitude, longitude = coords
+        device_id, latitude, longitude = coords
         location = self.resolver.resolve(latitude, longitude)
         if location == self._last_position:
             return
         self._last_position = location
         timestamp = event.get('timestamp') or time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-        self.publish_func({'timestamp': timestamp, 'position': location})
+        message = {'timestamp': timestamp, 'position': location, 'tracker_id': device_id}
+        self.publish_func(message)
 
     @property
     def last_position(self) -> Optional[str]:

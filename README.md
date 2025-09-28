@@ -110,7 +110,8 @@ python3 tests/amqp_consumer_example.py \
 
 `scripts/cat_location_daemon.py` consumes observer events from RabbitMQ,
 matches them against the placemarks in `Locations.kml`, and republishes a
-location update whenever the nearest named position changes.
+location update whenever the nearest named position changes. Each message
+contains the tracker ID, timestamp, and position string.
 
 Copy `/usr/local/etc/Locations.kml.sample` to `/usr/local/etc/Locations.kml`
 and edit it to match your real-world placemarks before launching the daemon.

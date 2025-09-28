@@ -21,7 +21,8 @@ class TestCatLocationDaemon(unittest.TestCase):
         payload = "[SG*1234567890*0066*UD,270524,061232,V,9.999851,N,30.000207,W,0.0,176,11,00,80,99,0,50,00000000,1,1,240,1,36,57745184,22,,00]"
         result = parse_tracker_payload(payload)
         self.assertIsNotNone(result)
-        lat, lon = result
+        device, lat, lon = result
+        self.assertEqual(device, "1234567890")
         self.assertAlmostEqual(lat, 9.999851)
         self.assertAlmostEqual(lon, -30.000207)
 
@@ -50,6 +51,7 @@ class TestCatLocationDaemon(unittest.TestCase):
         publisher.process_event(event)
         self.assertEqual(len(emitted), 1)
         self.assertEqual(emitted[0]["position"], "at the back of the house")
+        self.assertEqual(emitted[0]["tracker_id"], "1234567890")
 
         # New location
         event2 = {
@@ -59,6 +61,7 @@ class TestCatLocationDaemon(unittest.TestCase):
         publisher.process_event(event2)
         self.assertEqual(len(emitted), 2)
         self.assertEqual(emitted[-1]["position"], "in the field to the south")
+        self.assertEqual(emitted[-1]["tracker_id"], "1234567890")
 
 
 if __name__ == "__main__":
