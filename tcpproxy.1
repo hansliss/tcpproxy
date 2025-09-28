@@ -53,8 +53,10 @@ Optional observer configuration. Supported values:
 Append observer events to the specified logfile.
 .IP "amqp=\fIURI\fR"
 Publish JSON events to RabbitMQ. The URI may include query parameters such as
-\fBexchange\fR, \fBrouting_key\fR, and \fBqueue\fR. The helper script used for
-publishing defaults to
+\fBexchange\fR, \fBrouting_key\fR, and \fBqueue\fR. When an exchange is
+specified the helper publishes to that topic exchange, allowing multiple
+consumers to bind independent queues. The helper script used for publishing
+defaults to
 .IR /usr/local/libexec/tcpproxy/observer_amqp_publisher.py
 (adjust for your installation prefix), which can be overridden with the
 .B TCPPROXY_AMQP_HELPER

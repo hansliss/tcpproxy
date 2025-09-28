@@ -182,12 +182,17 @@ The repository is intentionally small and is organised as follows:
 - `observer.c` / `observer.h` – pluggable observer back-end. It parses the
   `-O` option, maintains shared configuration, and creates per-connection
   instances that either append to a logfile or stream JSON events to RabbitMQ
-  using the helper script.
+  using the helper script. The AMQP helper now publishes to a topic exchange so
+  multiple consumers can bind queues without changing the proxy configuration.
 - `tracker_parser.c` / `tracker_parser.h` – streaming parser used by the
   observer to reassemble tracker packets from arbitrary chunk boundaries and
   emit bracketed messages only when they pass basic validation.
 - `scripts/observer_amqp_publisher.py` – the helper process launched by the
   AMQP observer; it reads JSON lines on stdin and publishes them with `pika`.
+  Query parameters in the `-O amqp=…` string control the exchange/routing key.
+- `scripts/cat_location_daemon.py` – consumes tracker events from the shared
+  exchange, maps coordinates to placemarks from `Locations.kml`, and republishes
+  location updates on its own exchange.
 - `tests/` – Python utilities for exercising the proxy. `run_proxy_tests.py`
   spins up a client/server pair for various scenarios, `run_amqp_integration.py`
   orchestrates the Podman-backed RabbitMQ flow, and `echo_server.py` provides a

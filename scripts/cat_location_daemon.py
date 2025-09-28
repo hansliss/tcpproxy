@@ -130,6 +130,8 @@ class CatLocationDaemon:
     ) -> None:
         self.input_uri = input_uri
         self.input_queue = input_queue
+        # Allow the daemon to bind its intake queue to a shared exchange so
+        # multiple consumers can receive the raw tracker stream concurrently.
         self.input_exchange = input_exchange
         self.input_routing_key = input_routing_key or input_queue or "#"
         self.output_uri = output_uri
