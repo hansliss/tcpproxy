@@ -2,6 +2,7 @@
 #include<stdio.h>
 #include<sys/socket.h>
 #include<arpa/inet.h>
+#include<netinet/in.h>
 #include<string.h>
 #include<sys/types.h>
 #include<stdlib.h>
@@ -231,9 +232,13 @@ void handle_connection(int client_fd,
   int remote_port = 0;
   if (client_address->sa_family == AF_INET) {
     client_port = ntohs(((struct sockaddr_in *)client_address)->sin_port);
+  } else if (client_address->sa_family == AF_INET6) {
+    client_port = ntohs(((struct sockaddr_in6 *)client_address)->sin6_port);
   }
   if (remote_address->sa_family == AF_INET) {
     remote_port = ntohs(((struct sockaddr_in *)remote_address)->sin_port);
+  } else if (remote_address->sa_family == AF_INET6) {
+    remote_port = ntohs(((struct sockaddr_in6 *)remote_address)->sin6_port);
   }
   snprintf(log_filename, sizeof(log_filename), "%s/%s_%s.log", logdir, time_buf, client_ip ? client_ip : "unknown");
   if (remote_ip && remote_port) {
@@ -254,7 +259,7 @@ void handle_connection(int client_fd,
   struct observer_instance *observer = NULL;
 
   int remote_fd;
-  remote_fd=socket(AF_INET,SOCK_STREAM,0);
+  remote_fd = socket(remote_address->sa_family, SOCK_STREAM, 0);
   if (remote_fd == -1) {
     logerror("socket()", logdir);
     return;
@@ -333,7 +338,7 @@ int dolisten(struct sockaddr *local_address,
 	     char *logdir,
 	     struct observer_global *observer_global) {
   int sockfd, connfd;
-  struct sockaddr_in client_address;
+  struct sockaddr_storage client_address;
   childproc children = NULL;
   char listener_context[CONTEXT_LENGTH];
   char local_buf[BUFSIZE];
@@ -344,9 +349,13 @@ int dolisten(struct sockaddr *local_address,
   int remote_port = 0;
   if (local_address->sa_family == AF_INET) {
     local_port = ntohs(((struct sockaddr_in *)local_address)->sin_port);
+  } else if (local_address->sa_family == AF_INET6) {
+    local_port = ntohs(((struct sockaddr_in6 *)local_address)->sin6_port);
   }
   if (remote_address->sa_family == AF_INET) {
     remote_port = ntohs(((struct sockaddr_in *)remote_address)->sin_port);
+  } else if (remote_address->sa_family == AF_INET6) {
+    remote_port = ntohs(((struct sockaddr_in6 *)remote_address)->sin6_port);
   }
   if (remote_ip && remote_port) {
     snprintf(listener_context, sizeof(listener_context), "listener local=%s:%d remote=%s:%d",
@@ -362,7 +371,7 @@ int dolisten(struct sockaddr *local_address,
   log_set_context(listener_context);
   
   // socket create and verification
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  sockfd = socket(local_address->sa_family, SOCK_STREAM, 0);
   if (sockfd == -1) {
     printf("socket creation failed...\n");
     return ERR_SOCKFAIL;
@@ -450,16 +459,11 @@ void parseaddr(char *addrdesc, struct addrinfo **res) {
   char *addr = NULL;
   char *service = NULL;
   char *e=addrdesc + strlen(addrdesc);
-  struct addrinfo hints = {
-    0,
-    AF_INET,
-    SOCK_DGRAM,
-    IPPROTO_UDP,
-    0,
-    NULL,
-    NULL,
-    NULL
-  };
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
   int r;
   while(p < e && *p != ':') {
     p++;
@@ -480,10 +484,6 @@ void parseaddr(char *addrdesc, struct addrinfo **res) {
       fprintf(stderr, "Fatal: %s : %s\n", service, gai_strerror(r));
     }
     exit(-99);
-  }
-  if ((*res)->ai_family != AF_INET) {
-    fprintf(stderr, "I only handle IPv4 at the moment.\n");
-    exit(-98);
   }
 }
 

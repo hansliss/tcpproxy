@@ -178,7 +178,9 @@ The repository is intentionally small and is organised as follows:
 - `tcpproxy.c` – main entry point and listening loop. Accepts connections,
   forks workers, proxies bytes with `select(2)`, writes per-connection logs,
   and invokes the observer hook. The binary installs to `${prefix}/sbin`
-  (default `/usr/local/sbin`).
+  (default `/usr/local/sbin`). IPv4 and IPv6 endpoints are supported via
+  `getaddrinfo`, so the proxy can bind or forward to whichever family the
+  system resolves.
 - `observer.c` / `observer.h` – pluggable observer back-end. It parses the
   `-O` option, maintains shared configuration, and creates per-connection
   instances that either append to a logfile or stream JSON events to RabbitMQ

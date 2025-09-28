@@ -13,3 +13,5 @@ cmake_install.cmake
 build/
 tests/logs/*
 codex_resume.sh
+__pycache__/
+**/__pycache__/
