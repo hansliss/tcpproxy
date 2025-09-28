@@ -83,7 +83,7 @@ The observer can also publish events to RabbitMQ by passing an AMQP URI:
 
 ```
 tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy \
-  -O amqp=amqp://guest:guest@127.0.0.1:5672/%2F?queue=tcpproxy.events&routing_key=tcpproxy.events
+  -O amqp=amqp://guest:guest@127.0.0.1:5672/%2F?exchange=tcpproxy.events&routing_key=tracker.raw
 ```
 
 Events are published as JSON documents containing the same fields as the file
@@ -94,12 +94,43 @@ setting the
 `TCPPROXY_AMQP_HELPER` environment variable if you relocate the script. Ensure
 the Python `pika` package is installed on the host.
 
+When using the AMQP mode, specify the target exchange and routing key in the
+connection URI query (for example
+`amqp://.../?exchange=tcpproxy.events&routing_key=tracker.raw`). Consumers can
+bind their own queues to that exchange to receive near-raw tracker payloads.
+
 An example consumer lives at `tests/amqp_consumer_example.py`:
 
 ```
 python3 tests/amqp_consumer_example.py \
   amqp://guest:guest@127.0.0.1:5672/%2F?queue=tcpproxy.events
 ```
+
+### Location Daemon
+
+`scripts/cat_location_daemon.py` consumes observer events from RabbitMQ,
+matches them against the placemarks in `Locations.kml`, and republishes a
+location update whenever the nearest named position changes.
+
+Copy `/usr/local/etc/Locations.kml.sample` to `/usr/local/etc/Locations.kml`
+and edit it to match your real-world placemarks before launching the daemon.
+
+```
+python3 scripts/cat_location_daemon.py \
+  --input-uri amqp://guest:guest@127.0.0.1:5672/%2F \
+  --input-queue tracker.events.cli \
+  --input-exchange tcpproxy.events \
+  --input-routing-key tracker.raw \
+  --output-uri amqp://guest:guest@127.0.0.1:5672/%2F \
+  --output-exchange cat.location \
+  --output-routing-key cat.position \
+  --kml /usr/local/etc/Locations.kml
+```
+
+Run it as a foreground process for local testing, or install it as a systemd
+service that points at the same AMQP broker as the proxy. A sample unit file
+is provided (`cat_location.service`). Bind a queue to the `cat.location`
+exchange (topic) with the `cat.position` routing key to receive updates.
 
 ## Test Harness
 An end-to-end test harness lives under `tests/` and exercises the proxy with a
@@ -132,6 +163,13 @@ tests/run_amqp_integration.py
 
 By default the script removes containers and logs once it finishes. Pass
 `--keep-logs` to retain the generated artifacts for inspection.
+
+Unit tests covering the location resolver and publisher logic live in
+`tests/test_cat_location_daemon.py`:
+
+```
+python3 tests/test_cat_location_daemon.py
+```
 
 ## Internals
 

@@ -42,10 +42,10 @@ def main():
     if queue:
         channel.queue_declare(queue=queue, durable=False, auto_delete=True)
         if exchange:
-            channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=False)
+            channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
             channel.queue_bind(queue=queue, exchange=exchange, routing_key=routing_key or queue)
     elif exchange:
-        channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=False)
+        channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
 
     publish_exchange = exchange
     publish_routing_key = routing_key or queue

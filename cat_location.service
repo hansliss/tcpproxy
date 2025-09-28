@@ -1,0 +1,20 @@
+[Unit]
+Description=Publish cat location updates from tracker events
+After=network-online.target rabbitmq-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/tcpproxy/cat_location_daemon.py \
+  --input-uri amqp://guest:guest@127.0.0.1:5672/%2F \
+  --input-queue tracker.events.service \
+  --input-exchange tcpproxy.events \
+  --input-routing-key tracker.raw \
+  --output-uri amqp://guest:guest@127.0.0.1:5672/%2F \
+  --output-exchange cat.location \
+  --output-routing-key cat.position \
+  --kml /usr/local/etc/Locations.kml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

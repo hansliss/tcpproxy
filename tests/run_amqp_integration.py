@@ -24,6 +24,10 @@ except ImportError as exc:  # pragma: no cover
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
 HELPER_SCRIPT = REPO_ROOT / "scripts" / "observer_amqp_publisher.py"
+LOCATION_DAEMON = REPO_ROOT / "scripts" / "cat_location_daemon.py"
+KML_PATH = REPO_ROOT / "Locations.kml"
+TRACKER_EXCHANGE = "tcpproxy.events"
+TRACKER_ROUTING_KEY = "tracker.raw"
 LOG_ROOT = BASE_DIR / "logs"
 LOG_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +41,22 @@ def sanitize_uri(uri: str):
     clean_query = urllib.parse.urlencode(clean_pairs, doseq=True)
     sanitized = parsed._replace(query=clean_query)
     return urllib.parse.urlunparse(sanitized), query
+
+
+def ensure_queue(uri: str, queue: str, *, exchange: str | None = None, routing_key: str | None = None, verbose: bool = False) -> None:
+    clean_uri, _ = sanitize_uri(uri)
+    params = pika.URLParameters(clean_uri)
+    connection = pika.BlockingConnection(params)
+    channel = connection.channel()
+    channel.queue_declare(queue=queue, durable=False, auto_delete=True)
+    if exchange:
+        if verbose:
+            print(f"[ensure_queue] binding {queue} to {exchange} ({routing_key or '#'} )")
+        channel.exchange_declare(exchange=exchange, exchange_type='topic', durable=True, auto_delete=False)
+        channel.queue_bind(queue=queue, exchange=exchange, routing_key=routing_key or "#")
+    elif verbose:
+        print(f"[ensure_queue] declared queue {queue}")
+    connection.close()
 
 def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -144,7 +164,7 @@ def start_proxy(local_port: int, remote_port: int, logdir: Path, observer: str, 
     return proc
 
 
-def start_consumer(uri: str, queue: str, sink: list, stop_event: threading.Event, verbose: bool) -> threading.Thread:
+def start_consumer(uri: str, queue: str, sink: list, stop_event: threading.Event, verbose: bool, *, exchange: str | None = None, routing_key: str | None = None) -> threading.Thread:
     def _consume():
         clean_uri, _ = sanitize_uri(uri)
         params = pika.URLParameters(clean_uri)
@@ -153,6 +173,14 @@ def start_consumer(uri: str, queue: str, sink: list, stop_event: threading.Event
         connection = pika.BlockingConnection(params)
         channel = connection.channel()
         channel.queue_declare(queue=queue, durable=False, auto_delete=True)
+        if exchange:
+            channel.exchange_declare(exchange=exchange, exchange_type='topic', durable=True, auto_delete=False)
+            channel.queue_bind(queue=queue, exchange=exchange, routing_key=routing_key or "#")
+        if verbose:
+            if exchange:
+                print(f"[consumer] ready queue={queue} exchange={exchange} rk={routing_key or '#'}")
+            else:
+                print(f"[consumer] ready queue={queue}")
         for method, properties, body in channel.consume(queue=queue, inactivity_timeout=1.0):
             if stop_event.is_set():
                 break
@@ -187,9 +215,13 @@ def send_tracker_message(port: int, payload: bytes, verbose: bool) -> bytes:
 def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
     logdir = Path(tempfile.mkdtemp(prefix="amqp-integration-", dir=str(LOG_ROOT)))
     container = None
-    server = proxy = None
-    consumer_thread = None
-    observer_results = []
+    server = proxy = location_proc = None
+    tracker_results: list = []
+    tracker_thread = None
+    location_results_primary: list = []
+    location_results_secondary: list = []
+    location_thread_primary = None
+    location_thread_secondary = None
     stop_event = threading.Event()
 
     try:
@@ -197,7 +229,7 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         container = start_podman_rabbitmq(rabbit_port, verbose)
         wait_for_port(rabbit_port)
 
-        uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F?queue=tcpproxy.integration&routing_key=tcpproxy.integration"
+        uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F?exchange={TRACKER_EXCHANGE}&routing_key={TRACKER_ROUTING_KEY}"
 
         wait_for_rabbitmq(uri)
 
@@ -207,27 +239,111 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         local_port = get_free_port()
         proxy = start_proxy(local_port, remote_port, logdir, f"amqp={uri}", verbose=verbose)
 
-        consumer_thread = start_consumer(uri, "tcpproxy.integration", observer_results, stop_event, verbose)
+        location_exchange = "cat.location"
+        location_output_queue = "cat.location.test"
+        tracker_input_queue = "tracker.events.test"
+        tracker_tap_queue = "tracker.events.tap"
+        input_uri_clean, _ = sanitize_uri(uri)
+        output_uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F"
+        ensure_queue(
+            input_uri_clean,
+            tracker_input_queue,
+            exchange=TRACKER_EXCHANGE,
+            routing_key=TRACKER_ROUTING_KEY,
+            verbose=verbose,
+        )
+        location_cmd = [
+            sys.executable,
+            str(LOCATION_DAEMON),
+            "--input-uri",
+            input_uri_clean,
+            "--input-queue",
+            tracker_input_queue,
+            "--input-exchange",
+            TRACKER_EXCHANGE,
+            "--input-routing-key",
+            TRACKER_ROUTING_KEY,
+            "--output-uri",
+            output_uri,
+            "--output-exchange",
+            location_exchange,
+            "--output-routing-key",
+            location_output_queue,
+            "--kml",
+            str(KML_PATH),
+            "--log-level",
+            "WARNING",
+        ]
+        if verbose:
+            print("[start_location]", " ".join(location_cmd))
+        location_proc = subprocess.Popen(location_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        payload = b"[SG*1234567890*0005*LK]"
+        consumer_uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F"
+        location_thread_primary = start_consumer(
+            consumer_uri,
+            location_output_queue,
+            location_results_primary,
+            stop_event,
+            verbose,
+            exchange=location_exchange,
+            routing_key=location_output_queue,
+        )
+        location_thread_secondary = start_consumer(
+            consumer_uri,
+            f"{location_output_queue}.tap",
+            location_results_secondary,
+            stop_event,
+            verbose,
+            exchange=location_exchange,
+            routing_key=location_output_queue,
+        )
+        ensure_queue(
+            consumer_uri,
+            tracker_tap_queue,
+            exchange=TRACKER_EXCHANGE,
+            routing_key=TRACKER_ROUTING_KEY,
+            verbose=verbose,
+        )
+        tracker_thread = start_consumer(
+            consumer_uri,
+            tracker_tap_queue,
+            tracker_results,
+            stop_event,
+            verbose,
+            exchange=TRACKER_EXCHANGE,
+            routing_key=TRACKER_ROUTING_KEY,
+        )
+
+        payload = b"[SG*1234567890*0066*UD,270524,061232,V,9.999851,N,30.000207,W,0.0,176,11,00,80,99,0,50,00000000,1,1,240,1,36,57745184,22,,00]"
         reply = send_tracker_message(local_port, payload, verbose)
         if reply != payload:
             raise AssertionError("Proxy failed to echo tracker payload")
 
         deadline = time.time() + 10
-        while time.time() < deadline and not observer_results:
+        while time.time() < deadline and (not tracker_results or not location_results_primary or not location_results_secondary):
             time.sleep(0.2)
-        if not observer_results:
-            raise AssertionError("No observer event received from RabbitMQ")
+        if not tracker_results:
+            raise AssertionError("No tracker event received from RabbitMQ")
+        if not location_results_primary or not location_results_secondary:
+            raise AssertionError("No location event received from RabbitMQ")
 
-        event = observer_results[0]
-        if isinstance(event, dict):
-            assert event.get("payload") == payload.decode("ascii"), "Payload mismatch"
-            assert event.get("direction") == "client", "Unexpected direction"
+        tracker_event = tracker_results[0]
+        if isinstance(tracker_event, dict):
+            if tracker_event.get("payload") != payload.decode("ascii"):
+                raise AssertionError("Tracker payload mismatch")
         else:
-            raise AssertionError("Observer event not JSON")
+            raise AssertionError("Tracker event not JSON")
+
+        expected_position = "at the back of the house"
+        for idx, event in enumerate((location_results_primary[0], location_results_secondary[0]), start=1):
+            if isinstance(event, dict):
+                if event.get("position") != expected_position:
+                    raise AssertionError(f"Location mismatch (consumer {idx})")
+            else:
+                raise AssertionError(f"Location event {idx} not JSON")
         if verbose:
-            print("[success] received event", event)
+            print("[success] location consumer 1", location_results_primary[0])
+            print("[success] location consumer 2", location_results_secondary[0])
 
     finally:
         stop_event.set()
@@ -237,8 +353,24 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         if server:
             server.terminate()
             server.wait(timeout=5)
-        if consumer_thread:
-            consumer_thread.join(timeout=5)
+        if location_proc:
+            location_proc.terminate()
+            try:
+                stdout, stderr = location_proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                location_proc.kill()
+                stdout, stderr = location_proc.communicate(timeout=5)
+            if verbose:
+                if stdout:
+                    print("[location stdout]", stdout.decode("utf-8", errors="ignore"))
+                if stderr:
+                    print("[location stderr]", stderr.decode("utf-8", errors="ignore"))
+        if location_thread_primary:
+            location_thread_primary.join(timeout=5)
+        if location_thread_secondary:
+            location_thread_secondary.join(timeout=5)
+        if tracker_thread:
+            tracker_thread.join(timeout=5)
         if container:
             stop_podman(container)
         if not keep_logs:

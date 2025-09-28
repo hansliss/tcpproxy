@@ -1,0 +1,809 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ns0:kml xmlns:ns0="http://www.opengis.net/kml/2.2" xmlns:ns1="http://www.google.com/kml/ext/2.2">
+<ns0:Document>
+	<ns0:name>Locations</ns0:name>
+	<ns1:CascadingStyle ns0:id="__managed_style_2A6B9647BD30F39181FA">
+		<ns0:Style>
+			<ns0:IconStyle>
+				<ns0:scale>1.2</ns0:scale>
+				<ns0:Icon>
+					<ns0:href>https://earth.google.com/earth/rpc/cc/icon?color=1976d2&amp;id=2000&amp;scale=4</ns0:href>
+				</ns0:Icon>
+				<ns0:hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels" />
+			</ns0:IconStyle>
+			<ns0:LabelStyle>
+			</ns0:LabelStyle>
+			<ns0:LineStyle>
+				<ns0:color>ff2dc0fb</ns0:color>
+				<ns0:width>6</ns0:width>
+			</ns0:LineStyle>
+			<ns0:PolyStyle>
+				<ns0:color>40ffffff</ns0:color>
+			</ns0:PolyStyle>
+			<ns0:BalloonStyle>
+				<ns0:displayMode>hide</ns0:displayMode>
+			</ns0:BalloonStyle>
+		</ns0:Style>
+	</ns1:CascadingStyle>
+	<ns1:CascadingStyle ns0:id="__managed_style_128ED5EC9030F39181FA">
+		<ns0:Style>
+			<ns0:IconStyle>
+				<ns0:Icon>
+					<ns0:href>https://earth.google.com/earth/rpc/cc/icon?color=1976d2&amp;id=2000&amp;scale=4</ns0:href>
+				</ns0:Icon>
+				<ns0:hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels" />
+			</ns0:IconStyle>
+			<ns0:LabelStyle>
+			</ns0:LabelStyle>
+			<ns0:LineStyle>
+				<ns0:color>ff2dc0fb</ns0:color>
+				<ns0:width>4</ns0:width>
+			</ns0:LineStyle>
+			<ns0:PolyStyle>
+				<ns0:color>40ffffff</ns0:color>
+			</ns0:PolyStyle>
+			<ns0:BalloonStyle>
+				<ns0:displayMode>hide</ns0:displayMode>
+			</ns0:BalloonStyle>
+		</ns0:Style>
+	</ns1:CascadingStyle>
+	<ns0:StyleMap id="__managed_style_0E1B3938DA30F39181FA">
+		<ns0:Pair>
+			<ns0:key>normal</ns0:key>
+			<ns0:styleUrl>#__managed_style_128ED5EC9030F39181FA</ns0:styleUrl>
+		</ns0:Pair>
+		<ns0:Pair>
+			<ns0:key>highlight</ns0:key>
+			<ns0:styleUrl>#__managed_style_2A6B9647BD30F39181FA</ns0:styleUrl>
+		</ns0:Pair>
+	</ns0:StyleMap>
+	<ns0:Placemark id="02B70379A830F39181F3">
+		<ns0:name>in front of the house</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.65383885182256e-10</ns0:heading>
+			<ns0:tilt>2.335757862602521</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000309774,10.000069493,21.92510705</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0685C1336430F391C147">
+		<ns0:name>at the back of the house</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.65383885182256e-10</ns0:heading>
+			<ns0:tilt>2.335757862602521</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000294258,9.999891294,21.56476254</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0E089A73D130F39225C0">
+		<ns0:name>west of the house</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.65383885182256e-10</ns0:heading>
+			<ns0:tilt>2.335757862602521</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000509690,9.999979831,22.13849927</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="00A7F2A56B30F3926B22">
+		<ns0:name>on the pathway east of the house</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.65383885182256e-10</ns0:heading>
+			<ns0:tilt>2.335757862602521</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000039518,9.999962091,22.33351862</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="063DEA617630F392C8E5">
+		<ns0:name>near the car</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.655009453761164e-10</ns0:heading>
+			<ns0:tilt>2.335757862602833</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000108958,10.000049701,22.10001987</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="04C85CB4B530F393033C">
+		<ns0:name>in the driveway</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000443203</ns0:longitude>
+			<ns0:latitude>10.000133814</ns0:latitude>
+			<ns0:altitude>21.26950141860181</ns0:altitude>
+			<ns0:heading>-3.655009453761164e-10</ns0:heading>
+			<ns0:tilt>2.335757862602833</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>113.1155271298303</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000068742,10.000124528,21.99393779</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0E8314DEF330F3935949">
+		<ns0:name>near the southwest corner of the garden</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000407808</ns0:longitude>
+			<ns0:latitude>9.999869003</ns0:latitude>
+			<ns0:altitude>21.24427899590946</ns0:altitude>
+			<ns0:heading>3.286276877270765e-10</ns0:heading>
+			<ns0:tilt>2.335752860159952</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>99.46847550520036</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000580757,9.999710683,20.79372499</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0CAB20F62830F393C3B5">
+		<ns0:name>near the southeast corner of the garden</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000407808</ns0:longitude>
+			<ns0:latitude>9.999869003</ns0:latitude>
+			<ns0:altitude>21.24427899590946</ns0:altitude>
+			<ns0:heading>3.287057280234204e-10</ns0:heading>
+			<ns0:tilt>2.33575286015964</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>99.46847550520036</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000039590,9.999696083,21.22227633</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="05943F6D9630F3941618">
+		<ns0:name>near the northwest corner of the garden</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000392200</ns0:longitude>
+			<ns0:latitude>10.000144669</ns0:latitude>
+			<ns0:altitude>21.24865276055896</ns0:altitude>
+			<ns0:heading>-7.285061665790621e-11</ns0:heading>
+			<ns0:tilt>2.335752858230796</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>99.46410652772104</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000625333,10.000137151,21.84380543</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0A57C9E51130F39474F7">
+		<ns0:name>near the south entrance to the neighbor's workshop</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000393324</ns0:longitude>
+			<ns0:latitude>10.000408423</ns0:latitude>
+			<ns0:altitude>21.69208690839131</ns0:altitude>
+			<ns0:heading>-5.62670576052664e-11</ns0:heading>
+			<ns0:tilt>2.335752695198368</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>99.02029026638047</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000426181,10.000257995,21.45400628</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="097A4239E330F394B476">
+		<ns0:name>near the northern end of the neighbor's workshop</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000393324</ns0:longitude>
+			<ns0:latitude>10.000408423</ns0:latitude>
+			<ns0:altitude>21.69208690839131</ns0:altitude>
+			<ns0:heading>-5.62670576052664e-11</ns0:heading>
+			<ns0:tilt>2.335752695198368</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>99.02029026638047</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000435247,10.000470478,21.89723723</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="07F61F97A230F3951EE3">
+		<ns0:name>around the AirBnB compound</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000195463</ns0:longitude>
+			<ns0:latitude>10.000834334</ns0:latitude>
+			<ns0:altitude>21.14463239063932</ns0:altitude>
+			<ns0:heading>-6.777225507159211e-10</ns0:heading>
+			<ns0:tilt>2.335816319109803</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.6136489016426</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000457667,10.000842270,21.04385795</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="00E7C0978130F3957DEF">
+		<ns0:name>near the northwest corner of the horse paddock</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000306882</ns0:longitude>
+			<ns0:latitude>10.001485032</ns0:latitude>
+			<ns0:altitude>21.81868319516995</ns0:altitude>
+			<ns0:heading>-4.047060303203091e-10</ns0:heading>
+			<ns0:tilt>2.335816071542725</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.9390185170778</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000741162,10.001506011,21.88881012</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="062D97A33730F395BD43">
+		<ns0:name>near the north end of the horse  paddock</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000306882</ns0:longitude>
+			<ns0:latitude>10.001485032</ns0:latitude>
+			<ns0:altitude>21.81868319516995</ns0:altitude>
+			<ns0:heading>-4.047060303203091e-10</ns0:heading>
+			<ns0:tilt>2.335816071542725</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.9390185170778</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000074634,10.001507909,21.61022312</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="06DB57603C30F395ED92">
+		<ns0:name>near the northeast corner of the horse paddock</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000306882</ns0:longitude>
+			<ns0:latitude>10.001485032</ns0:latitude>
+			<ns0:altitude>21.81868319516995</ns0:altitude>
+			<ns0:heading>-4.047060303203091e-10</ns0:heading>
+			<ns0:tilt>2.335816071542725</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.9390185170778</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999353049,10.001509934,20.98844488</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="06B3A298A830F39667C4">
+		<ns0:name>in the eastern horse paddock</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000306882</ns0:longitude>
+			<ns0:latitude>10.001485032</ns0:latitude>
+			<ns0:altitude>21.81868319516995</ns0:altitude>
+			<ns0:heading>-1.238426985791514e-09</ns0:heading>
+			<ns0:tilt>2.335816071489503</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.9389953394784</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999573683,10.001146335,21.12679781</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="085DCB5B8C30F396A632">
+		<ns0:name>near the rubbish pile in the eastern horse paddock</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999515745,10.000913814,21.05679577</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="03ADDD71F030F396FB5B">
+		<ns0:name>northeast of the large barn</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999025267,10.000717960,21.40009200</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="02A73D040B30F3974105">
+		<ns0:name>in the large barn, near the northwest opening</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999841268,10.000427958,22.08031459</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="07F1ACCEAC30F39785CD">
+		<ns0:name>near the pump house</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999839097,10.000154515,22.26132540</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="00B6DB2F5030F397BCD6">
+		<ns0:name>in the large barn, south end</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999563587,10.000201040,22.67858915</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="05AA79120030F3980837">
+		<ns0:name>in the large barn, east end</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999209841,10.000561128,22.52527567</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0F612F2A0330F3984A7E">
+		<ns0:name>east of the old barn</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.998862493,10.000346063,21.37177164</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="06198D693830F3989FB3">
+		<ns0:name>in the old barn</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000083851</ns0:longitude>
+			<ns0:latitude>10.000717657</ns0:latitude>
+			<ns0:altitude>21.18924318500412</ns0:altitude>
+			<ns0:heading>4.257372793793467e-09</ns0:heading>
+			<ns0:tilt>2.335816301828717</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>272.5689856676763</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999158657,10.000311140,22.58471268</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="025CE8ED7530F398E496">
+		<ns0:name>in the neighbor's garden</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.267616847820528e-09</ns0:heading>
+			<ns0:tilt>2.3358159369551</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.575616936716</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999411111,9.999840806,22.00545273</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0A0AF514F230F3991917">
+		<ns0:name>in the neighbor's hedge, southeast corner</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.267616847820528e-09</ns0:heading>
+			<ns0:tilt>2.3358159369551</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.575616936716</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.998924753,9.999687787,22.05442288</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="045FB2238630F3996B54">
+		<ns0:name>in the neighbor's southern hedge</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.267616847820528e-09</ns0:heading>
+			<ns0:tilt>2.3358159369551</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.575616936716</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999601215,9.999700399,22.39557075</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0B2766CF8C30F399EEF1">
+		<ns0:name>in the neighbor's eastern hedge</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.163123711430225e-09</ns0:heading>
+			<ns0:tilt>2.335815936912648</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.5756401143154</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.998913797,9.999882542,22.45575778</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0F73F986C430F39A3310">
+		<ns0:name>near the mailboxes</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.163162730524909e-09</ns0:heading>
+			<ns0:tilt>2.335815936913116</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.5756401143154</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999167386,10.000130921,22.59204810</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="08A62A091F30F39A6D45">
+		<ns0:name>near the start of the road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999219724</ns0:longitude>
+			<ns0:latitude>9.999899198</ns0:latitude>
+			<ns0:altitude>22.18179846908636</ns0:altitude>
+			<ns0:heading>5.163162730524909e-09</ns0:heading>
+			<ns0:tilt>2.335815936913116</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>271.5756401143154</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.998679972,10.000176564,21.99143065</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0658F2FBC830F39AB05C">
+		<ns0:name>halfway up the road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997228715</ns0:longitude>
+			<ns0:latitude>10.000109771</ns0:latitude>
+			<ns0:altitude>20.50827124996507</ns0:altitude>
+			<ns0:heading>5.220558449112429e-09</ns0:heading>
+			<ns0:tilt>2.335816550315997</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.2505229768503</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.997544480,10.000326904,21.01834931</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0E640C1DF530F39B0233">
+		<ns0:name>near the rocks at the end of road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997228715</ns0:longitude>
+			<ns0:latitude>10.000109771</ns0:latitude>
+			<ns0:altitude>20.50827124996507</ns0:altitude>
+			<ns0:heading>5.220558449112429e-09</ns0:heading>
+			<ns0:tilt>2.335816550315997</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.2505229768503</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.996716946,10.000503558,21.49326535</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0947CCF75530F39B46F8">
+		<ns0:name>near the large road, the north side</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997228715</ns0:longitude>
+			<ns0:latitude>10.000109771</ns0:latitude>
+			<ns0:altitude>20.50827124996507</ns0:altitude>
+			<ns0:heading>5.220558449112429e-09</ns0:heading>
+			<ns0:tilt>2.335816550315997</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.2505229768503</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.996415248,10.000560818,21.06541709</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="02729CEE0B30F39B8498">
+		<ns0:name>near the large road, the south side</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997228715</ns0:longitude>
+			<ns0:latitude>10.000109771</ns0:latitude>
+			<ns0:altitude>20.50827124996507</ns0:altitude>
+			<ns0:heading>5.220558449112429e-09</ns0:heading>
+			<ns0:tilt>2.335816550315997</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.2505229768503</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.996384487,10.000436924,20.80542920</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="026F2B958D30F39BB9E0">
+		<ns0:name>near the bus stop</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997228715</ns0:longitude>
+			<ns0:latitude>10.000109771</ns0:latitude>
+			<ns0:altitude>20.50827124996507</ns0:altitude>
+			<ns0:heading>5.220558449112429e-09</ns0:heading>
+			<ns0:tilt>2.335816550315997</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.2505229768503</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.996200509,9.999984426,20.33557855</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0AF7BEF4CB30F39C12FA">
+		<ns0:name>along the large road, north of our road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.997331741</ns0:longitude>
+			<ns0:latitude>10.000751094</ns0:latitude>
+			<ns0:altitude>20.67212879130839</ns0:altitude>
+			<ns0:heading>6.241102773087878e-09</ns0:heading>
+			<ns0:tilt>2.335816489889792</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>273.0865646389793</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.996569725,10.000882355,20.36338865</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="010F2D811830F39C8734">
+		<ns0:name>in the field to the west, north end</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998975559</ns0:longitude>
+			<ns0:latitude>10.001061291</ns0:latitude>
+			<ns0:altitude>20.82436979878998</ns0:altitude>
+			<ns0:heading>1.938941134851108e-09</ns0:heading>
+			<ns0:tilt>2.336092987441418</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.486806190718</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.002304156,10.001116882,22.08524715</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0E83DEAED630F39CEF51">
+		<ns0:name>in the field to the west, south end</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998975559</ns0:longitude>
+			<ns0:latitude>10.001061291</ns0:latitude>
+			<ns0:altitude>20.82436979878998</ns0:altitude>
+			<ns0:heading>1.938941134851108e-09</ns0:heading>
+			<ns0:tilt>2.336092987441418</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.486806190718</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.002262387,9.999855993,21.13565673</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0579F00FCB30F39D3939">
+		<ns0:name>in the field to the south</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998409616</ns0:longitude>
+			<ns0:latitude>9.999495337</ns0:latitude>
+			<ns0:altitude>20.39094830597793</ns0:altitude>
+			<ns0:heading>2.505977272896596e-09</ns0:heading>
+			<ns0:tilt>2.336093146317542</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.920598140336</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999355909,9.999050242,20.80559734</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="02CC968B3030F39D7A16">
+		<ns0:name>in the field to the north</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998988024</ns0:longitude>
+			<ns0:latitude>10.001663374</ns0:latitude>
+			<ns0:altitude>20.82472726063519</ns0:altitude>
+			<ns0:heading>7.753306628499069e-09</ns0:heading>
+			<ns0:tilt>2.336092987226838</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.486528059526</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000134195,10.002576622,22.36409593</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="095EB0011630F39DB65F">
+		<ns0:name>in the field to the east, north of the road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998988024</ns0:longitude>
+			<ns0:latitude>10.001663374</ns0:latitude>
+			<ns0:altitude>20.82472726063519</ns0:altitude>
+			<ns0:heading>7.753306628499069e-09</ns0:heading>
+			<ns0:tilt>2.336092987226838</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.486528059526</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.997923637,10.001172398,20.84761255</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="099992A31730F39E03B0">
+		<ns0:name>east of the large road</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.998988024</ns0:longitude>
+			<ns0:latitude>10.001663374</ns0:latitude>
+			<ns0:altitude>20.82472726063519</ns0:altitude>
+			<ns0:heading>7.753306628499069e-09</ns0:heading>
+			<ns0:tilt>2.336092987226838</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>1027.486528059526</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.994783710,10.001014475,20.46662553</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="0B5B6CBED730F3A70AD7">
+		<ns0:name>in the western part of the neighbor's garden</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-29.999675507</ns0:longitude>
+			<ns0:latitude>10.000081450</ns0:latitude>
+			<ns0:altitude>22.31395139009002</ns0:altitude>
+			<ns0:heading>6.12039908017916e-09</ns0:heading>
+			<ns0:tilt>2.335778534653021</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>169.5326895826292</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-29.999796446,9.999947755,21.75851481</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark id="088DDE48E030F3A94E00">
+		<ns0:name>in front of the neighbor's workshop</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>-30.000010097</ns0:longitude>
+			<ns0:latitude>10.000324232</ns0:latitude>
+			<ns0:altitude>21.61519647164981</ns0:altitude>
+			<ns0:heading>6.776631979976982e-09</ns0:heading>
+			<ns0:tilt>2.335778790723974</ns0:tilt>
+			<ns1:fovy>35</ns1:fovy>
+			<ns0:range>170.2320041105122</ns0:range>
+			<ns0:altitudeMode>absolute</ns0:altitudeMode>
+		</ns0:LookAt>
+		<ns0:styleUrl>#__managed_style_0E1B3938DA30F39181FA</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>-30.000283529,10.000360475,21.41729637</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+</ns0:Document>
+</ns0:kml>
