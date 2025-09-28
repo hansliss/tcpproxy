@@ -22,6 +22,7 @@
  * message with the component that triggered it (listener, connection, etc.).
  */
 static char current_log_context[CONTEXT_LENGTH] = "proxy";
+static char *pidfile_path_global = NULL;
 
 static void log_set_context(const char *context) {
   if (!context || !*context) {
@@ -111,7 +112,7 @@ void wait_for_children(childproc *list, char *logdir) {
 
 void usage(char *progname) {
   fprintf(stderr,
-          "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-O <observer config>]\n"
+          "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-p <pid file>] [-O <observer config>]\n"
           "  -O file=/path/to/events.log   Append observer output to a text logfile\n"
           "  -O amqp=<amqp URI>            Publish JSON events to RabbitMQ via helper\n",
           progname);
@@ -489,12 +490,14 @@ int main(int argc, char *argv[]) {
   char *remote_address_string = NULL;
   char *local_address_string = NULL;
   char *logdir = NULL;
+  char *pidfile_path = NULL;
   char *observer_config_string = NULL;
   struct observer_global *observer_global = NULL;
+  FILE *pidfile = NULL;
 
   log_set_context("main");
 
-  while ((o=getopt(argc, argv, "l:r:o:O:"))!=-1) {
+  while ((o=getopt(argc, argv, "l:r:o:p:O:"))!=-1) {
     switch (o) {
     case 'l':
       local_address_string = optarg;
@@ -507,6 +510,9 @@ int main(int argc, char *argv[]) {
       while (strlen(logdir) > 1 && logdir[strlen(logdir) -1] == '/') {
 	logdir[strlen(logdir) - 1] = '\0';
       }
+      break;
+    case 'p':
+      pidfile_path = optarg;
       break;
     case 'O':
       observer_config_string = optarg;
@@ -527,6 +533,26 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Unable to initialize observer configuration.\n");
     return -1;
   }
+  if (pidfile_path) {
+    pidfile = fopen(pidfile_path, "w");
+    if (!pidfile) {
+      fprintf(stderr, "Unable to open pidfile %s: %s\n", pidfile_path, strerror(errno));
+      observer_global_free(observer_global);
+      return -1;
+    }
+    fprintf(pidfile, "%ld\n", (long)getpid());
+    fclose(pidfile);
+    pidfile_path_global = strdup(pidfile_path);
+    if (!pidfile_path_global) {
+      fprintf(stderr, "Unable to allocate memory for pidfile path.\n");
+      observer_global_free(observer_global);
+      unlink(pidfile_path);
+      return -1;
+    }
+    atexit(cleanup_pidfile);
+    signal(SIGTERM, handle_exit_signal);
+    signal(SIGINT, handle_exit_signal);
+  }
   dolisten(local_address->ai_addr,
 	   local_address->ai_addrlen,
 	   remote_address->ai_addr,
@@ -534,4 +560,18 @@ int main(int argc, char *argv[]) {
 	   logdir,
 	   observer_global);
   observer_global_free(observer_global);
+  cleanup_pidfile();
+}
+static void cleanup_pidfile(void) {
+  if (pidfile_path_global) {
+    unlink(pidfile_path_global);
+    free(pidfile_path_global);
+    pidfile_path_global = NULL;
+  }
+}
+
+static void handle_exit_signal(int signo) {
+  (void)signo;
+  cleanup_pidfile();
+  _exit(0);
 }

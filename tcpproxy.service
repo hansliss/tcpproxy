@@ -4,11 +4,12 @@ ConditionPathIsMountPoint=/opt
 
 [Service]
 Type=simple
-ExecStart=/opt/tcpproxy/bin/runproxy.sh 0.0.0.0:7700 47.88.85.196:7700 /opt/tcpproxy/log /var/run/tcpproxy.pid
-ExecStop=kill `cat /var/run/tcpproxy.pid`
+ExecStart=/usr/local/sbin/tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy -p /run/tcpproxy/tcpproxy.pid
+PIDFile=/run/tcpproxy/tcpproxy.pid
+RuntimeDirectory=tcpproxy
+RuntimeDirectoryMode=0755
 StandardOutput=null
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-

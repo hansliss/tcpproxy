@@ -24,8 +24,10 @@ adminip123456 10.20.30.40 7700
 
 Then run the proxy on that server using
 ```
-tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /opt/tcpproxy/log
+tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy -p /run/tcpproxy/tcpproxy.pid
 ```
+Create `/run/tcpproxy` first when running manually; the provided systemd unit
+uses `RuntimeDirectory` to handle this automatically.
 
 For the other tracker, the SMS command is different:
 ```
@@ -66,7 +68,7 @@ messages to a separate logfile without altering the live TCP stream. Enable it
 with the `-O` flag and point it at an event file:
 
 ```
-tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /opt/tcpproxy/log -O file=/opt/tcpproxy/events.log
+tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy -O file=/var/log/tcpproxy/events.log
 ```
 
 Each observer line records the chunk timestamp, direction (`client` or
@@ -80,13 +82,15 @@ touching the core proxy loop.
 The observer can also publish events to RabbitMQ by passing an AMQP URI:
 
 ```
-tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /opt/tcpproxy/log \
+tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy \
   -O amqp=amqp://guest:guest@127.0.0.1:5672/%2F?queue=tcpproxy.events&routing_key=tcpproxy.events
 ```
 
 Events are published as JSON documents containing the same fields as the file
 logger. The helper script used to publish messages defaults to
-`scripts/observer_amqp_publisher.py`; override it by setting the
+`/usr/local/libexec/tcpproxy/observer_amqp_publisher.py` after installation
+(adjust the path if you chose a different prefix). Override the helper path by
+setting the
 `TCPPROXY_AMQP_HELPER` environment variable if you relocate the script. Ensure
 the Python `pika` package is installed on the host.
 
@@ -135,7 +139,8 @@ The repository is intentionally small and is organised as follows:
 
 - `tcpproxy.c` – main entry point and listening loop. Accepts connections,
   forks workers, proxies bytes with `select(2)`, writes per-connection logs,
-  and invokes the observer hook.
+  and invokes the observer hook. The binary installs to `${prefix}/sbin`
+  (default `/usr/local/sbin`).
 - `observer.c` / `observer.h` – pluggable observer back-end. It parses the
   `-O` option, maintains shared configuration, and creates per-connection
   instances that either append to a logfile or stream JSON events to RabbitMQ
@@ -157,6 +162,8 @@ Key behaviours:
   session and endpoints involved.
 - `copy_message()` retries short writes, mirrors traffic to disk, and notifies
   the observer before forwarding bytes to the peer.
+- Supplying `-p` records the daemon PID to a file that is automatically
+  removed on graceful exit and when systemd sends termination signals.
 - The observer buffers per-direction fragments until complete bracketed
   payloads are reconstructed. Events contain the timestamp, direction, source
   IP, connection identifier, and payload, and they can be routed to multiple
@@ -164,3 +171,14 @@ Key behaviours:
 - The optional AMQP integration keeps the C proxy dependency-free: all AMQP
   specifics live in the helper process, which can be swapped by setting
   `TCPPROXY_AMQP_HELPER`.
+- By default CMake installs the helper under `/usr/local/libexec/tcpproxy`
+  (or the equivalent path for your chosen prefix); running the proxy directly
+  from the build tree should export `TCPPROXY_AMQP_HELPER` so tests can locate the
+  in-tree script.
+- The overall install prefix defaults to `/usr/local`; adjust it via
+  `-DCMAKE_INSTALL_PREFIX=` when configuring if you need a different layout.
+
+## Authors
+
+- Hans Liss
+- ChatGPT (observer integration and tooling)

@@ -12,7 +12,9 @@
 
 #include "tracker_parser.h"
 
-#define DEFAULT_HELPER_PATH "scripts/observer_amqp_publisher.py"
+#ifndef DEFAULT_AMQP_HELPER_PATH
+#define DEFAULT_AMQP_HELPER_PATH "scripts/observer_amqp_publisher.py"
+#endif
 
 /*
  * The observer module routes parsed tracker events to pluggable sinks. Two
@@ -227,7 +229,7 @@ static const char *resolve_helper_path(void) {
   if (env && *env) {
     return env;
   }
-  return DEFAULT_HELPER_PATH;
+  return DEFAULT_AMQP_HELPER_PATH;
 }
 
 /* Spawn the Python helper that publishes observer events to RabbitMQ. */

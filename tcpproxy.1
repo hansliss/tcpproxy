@@ -1,0 +1,104 @@
+.TH TCPPROXY 1 "September 2025" "tcpproxy 1.0" "User Commands"
+.SH NAME
+tcpproxy \- TCP logging proxy for tracker devices
+.SH SYNOPSIS
+.B tcpproxy
+\-l \fIlocal-addr:service\fR
+\-r \fIremote-addr:service\fR
+\-o \fIlog-directory\fR
+.RB [ \-p
+.IR pidfile ]
+.RB [ \-O
+.IR observer-config ]
+.SH DESCRIPTION
+.B tcpproxy
+accepts TCP connections on a local address and mirrors traffic to a remote
+server while writing per-connection transcripts. Each session is logged to a
+file named with the connection timestamp and client IP under the specified log
+directory. A global
+.IR errors.log
+collects operational errors.
+.PP
+An optional observer can mirror validated tracker messages to additional
+sinks. Logging can be appended to a plain text file or published as JSON events
+via RabbitMQ.
+.SH OPTIONS
+.TP
+.BR -l "," --listen
+Local listening address and service in the form
+.IR host : port .
+Use
+.B 0.0.0.0
+or
+.B ::
+for wildcard bind.
+.TP
+.BR -r "," --remote
+Upstream server address and service. The proxy opens a separate connection to
+this endpoint for every client session.
+.TP
+.BR -o "," --output
+Directory where per-connection logs (and
+.IR errors.log )
+are written. The directory is created if it does not exist.
+.TP
+.BR -p "," --pidfile
+Write the daemon PID to the specified file. The file is removed on orderly
+shutdown and when the process receives \fBSIGINT\fR or \fBSIGTERM\fR.
+.TP
+.BR -O "," --observer
+Optional observer configuration. Supported values:
+.RS
+.IP "file=\fI/path/to/log\fR"
+Append observer events to the specified logfile.
+.IP "amqp=\fIURI\fR"
+Publish JSON events to RabbitMQ. The URI may include query parameters such as
+\fBexchange\fR, \fBrouting_key\fR, and \fBqueue\fR. The helper script used for
+publishing defaults to
+.IR /usr/local/libexec/tcpproxy/observer_amqp_publisher.py
+(adjust for your installation prefix), which can be overridden with the
+.B TCPPROXY_AMQP_HELPER
+environment variable.
+.RE
+.SH FILES
+.TP
+.B /usr/local/libexec/tcpproxy/observer_amqp_publisher.py
+Default RabbitMQ helper installed alongside the binary (path depends on the
+chosen installation prefix).
+.TP
+.B errors.log
+Created under the output directory and contains timestamped error messages with
+context such as listener or connection identifiers.
+.SH ENVIRONMENT
+.TP
+.B TCPPROXY_AMQP_HELPER
+Override the path to the RabbitMQ helper script when using an AMQP observer.
+.SH EXIT STATUS
+.TP
+.B 0
+Successful execution.
+.TP
+.B >0
+An error occurred during startup or while running.
+.SH EXAMPLES
+.PP
+Run the proxy listening on port 7700, forwarding to the remote tracker server,
+logging under
+.IR /var/log/tcpproxy :
+.PP
+.nf
+.B tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy -p /run/tcpproxy/tcpproxy.pid
+.fi
+.PP
+Forward traffic while publishing events to RabbitMQ:
+.PP
+.nf
+.B tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy -p /run/tcpproxy/tcpproxy.pid \\
+.B \ \ -O amqp=amqp://guest:guest@127.0.0.1:5672/%2F?queue=tcpproxy.events
+.fi
+.SH SEE ALSO
+.BR readlog (1)
+.SH AUTHORS
+Hans Liss
+.br
+Enhancements by contributors, including ChatGPT (observer integration and tooling).
