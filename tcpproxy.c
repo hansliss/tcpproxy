@@ -24,6 +24,9 @@
 static char current_log_context[CONTEXT_LENGTH] = "proxy";
 static char *pidfile_path_global = NULL;
 
+static void cleanup_pidfile(void);
+static void handle_exit_signal(int signo);
+
 static void log_set_context(const char *context) {
   if (!context || !*context) {
     snprintf(current_log_context, sizeof(current_log_context), "%s", "proxy");
