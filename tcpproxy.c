@@ -17,6 +17,10 @@
 
 #define CONTEXT_LENGTH 256
 
+/*
+ * Error logging is routed through a global context string so we can tag every
+ * message with the component that triggered it (listener, connection, etc.).
+ */
 static char current_log_context[CONTEXT_LENGTH] = "proxy";
 
 static void log_set_context(const char *context) {
@@ -38,6 +42,10 @@ static const char *log_get_context(void) {
 
 #define BUFSIZE 131072
 
+/*
+ * Append an error message to errors.log, including errno details and the
+ * active logging context. Falls back to stderr if the log cannot be opened.
+ */
 void logerror(char *message, char *logdir) {
   static char time_buf[20], filenamebuf[BUFSIZE];
   time_t t;
@@ -102,9 +110,18 @@ void wait_for_children(childproc *list, char *logdir) {
 }
 
 void usage(char *progname) {
-  fprintf(stderr, "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-O <observer config>]\n", progname);
+  fprintf(stderr,
+          "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-O <observer config>]\n"
+          "  -O file=/path/to/events.log   Append observer output to a text logfile\n"
+          "  -O amqp=<amqp URI>            Publish JSON events to RabbitMQ via helper\n",
+          progname);
 }
 
+/*
+ * Pump bytes from one socket to the other while mirroring the payload to the
+ * connection log and optional observer. Returns the number of bytes forwarded
+ * or zero on failure/EOF.
+ */
 int copy_message(int fromfd,
                  int tofd,
                  char *source,
@@ -162,6 +179,9 @@ int copy_message(int fromfd,
 
 // Convert a struct sockaddr address to a string, IPv4 and IPv6:
 
+/*
+ * Render a sockaddr as a printable IP (IPv4/IPv6). Returns NULL on failure.
+ */
 char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen) {
   switch(sa->sa_family) {
   case AF_INET:
@@ -182,6 +202,10 @@ char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen) {
   return s;
 }
 
+/*
+ * Child process entry point: proxy a single client connection to the remote
+ * server using select(2) and mirror traffic to disk/observer.
+ */
 void handle_connection(int client_fd,
 		       struct sockaddr *client_address,
 		       socklen_t client_addrlen,
@@ -294,6 +318,10 @@ void handle_connection(int client_fd,
   return;
 }
 
+/*
+ * Parent process loop: accept new connections and fork children to handle
+ * each session while reaping completed children opportunistically.
+ */
 int dolisten(struct sockaddr *local_address,
 	     socklen_t local_addrlen,
 	     struct sockaddr *remote_address,

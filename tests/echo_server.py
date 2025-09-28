@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Tiny configurable TCP server used by the integration tests."""
+
 import argparse
 import socket
 import sys

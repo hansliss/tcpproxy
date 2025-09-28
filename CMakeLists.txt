@@ -30,4 +30,11 @@ if(Python3_Interpreter_FOUND)
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Running proxy end-to-end tests"
   )
+  add_custom_target(amqp-integration
+    COMMAND ${CMAKE_COMMAND} -E env TCPPROXY_BIN=$<TARGET_FILE:tcpproxy>
+            ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/run_amqp_integration.py
+    DEPENDS tcpproxy
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Running AMQP integration test (requires podman)"
+  )
 endif()

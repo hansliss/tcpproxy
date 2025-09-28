@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""End-to-end proxy harness used by automated tests."""
+
 import argparse
 import os
 import socket

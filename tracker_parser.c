@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Stateless framing helper used by the observer. It tolerates partial chunks
+ * arriving in any order and only emits well-formed bracketed messages.
+ */
+
 static int is_allowed_char(unsigned char c) {
   if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
     return 1;
@@ -26,6 +31,7 @@ static int is_allowed_char(unsigned char c) {
   }
 }
 
+/* Quick sanity checks: ensure brackets balance and characters are printable. */
 static int message_is_valid(const char *msg, size_t len) {
   if (len < 2) {
     return 0;
@@ -41,6 +47,7 @@ static int message_is_valid(const char *msg, size_t len) {
   return 1;
 }
 
+/* Reset per-direction buffers. */
 void tracker_parser_init(tracker_parser *parser) {
   if (!parser) {
     return;
@@ -49,6 +56,7 @@ void tracker_parser_init(tracker_parser *parser) {
   parser->server_len = 0;
 }
 
+/* Append data into the rolling buffer, trimming older bytes if needed. */
 static void append_data(char *buffer, size_t *buffer_len, const char *data, size_t data_len) {
   if (data_len == 0) {
     return;
@@ -67,6 +75,10 @@ static void append_data(char *buffer, size_t *buffer_len, const char *data, size
   *buffer_len += data_len;
 }
 
+/*
+ * Scan the buffer for bracketed messages, emit them, and compact the buffer to
+ * keep any trailing partial fragments for the next chunk.
+ */
 static void process_buffer(char *buffer,
                            size_t *buffer_len,
                            enum observer_direction direction,
