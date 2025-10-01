@@ -23,7 +23,7 @@ except ImportError as exc:  # pragma: no cover
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
-LOCATION_DAEMON = REPO_ROOT / "scripts" / "cat_location_daemon.py"
+LOCATION_DAEMON = Path(os.environ.get("TCPPROXY_CAT_LOCATION", REPO_ROOT / "build" / "cat_location_daemon"))
 TRACKER_PARSER_BIN = Path(os.environ.get("TCPPROXY_TRACKER_PARSER", REPO_ROOT / "build" / "tracker_parser_daemon"))
 KML_PATH = REPO_ROOT / "Locations.kml"
 TRACKER_EXCHANGE = "tcpproxy.events"
@@ -312,8 +312,10 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             durable=True,
             auto_delete=False,
         )
+        if not LOCATION_DAEMON.exists():
+            raise RuntimeError("Build the cat_location_daemon before running this test")
+
         location_cmd = [
-            sys.executable,
             str(LOCATION_DAEMON),
             "--input-uri",
             input_uri_clean,

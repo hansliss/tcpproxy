@@ -106,24 +106,24 @@ python3 tests/amqp_consumer_example.py \
 
 ### Location Daemon
 
-`scripts/cat_location_daemon.py` consumes observer events from RabbitMQ,
-matches them against the placemarks in `Locations.kml`, and republishes a
-location update whenever the nearest named position changes. Each message
-contains the tracker ID, timestamp, and position string.
+`cat_location_daemon` (installed under `libexec/tcpproxy`) consumes observer
+events from RabbitMQ, matches them against the placemarks in `Locations.kml`,
+and republishes a location update whenever the nearest named position changes.
+Each message contains the tracker ID, timestamp, and position string.
 
 Copy `/usr/local/etc/Locations.kml.sample` to `/usr/local/etc/Locations.kml`
 and edit it to match your real-world placemarks before launching the daemon.
 
 ```
-python3 scripts/cat_location_daemon.py \
-  --input-uri amqp://guest:guest@127.0.0.1:5672/%2F \
-  --input-queue tracker.events.cli \
-  --input-exchange tcpproxy.events \
-  --input-routing-key tracker.raw \
-  --output-uri amqp://guest:guest@127.0.0.1:5672/%2F \
-  --output-exchange cat.location \
-  --output-routing-key cat.position \
-  --kml /usr/local/etc/Locations.kml
+/usr/local/libexec/tcpproxy/cat_location_daemon \
+  --input-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
+  --input-queue=tracker.events.cli \
+  --input-exchange=tcpproxy.events \
+  --input-routing-key=tracker.raw \
+  --output-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
+  --output-exchange=cat.location \
+  --output-routing-key=cat.position \
+  --kml=/usr/local/etc/Locations.kml
 ```
 
 Run it as a foreground process for local testing, or install it as a systemd
@@ -163,13 +163,6 @@ tests/run_amqp_integration.py
 By default the script removes containers and logs once it finishes. Pass
 `--keep-logs` to retain the generated artifacts for inspection.
 
-Unit tests covering the location resolver and publisher logic live in
-`tests/test_cat_location_daemon.py`:
-
-```
-python3 tests/test_cat_location_daemon.py
-```
-
 ## Internals
 
 The repository is intentionally small and is organised as follows:
@@ -190,9 +183,9 @@ The repository is intentionally small and is organised as follows:
 - `tracker_parser_daemon.c` – consumes raw tracker events from the
   shared `tcpproxy.events` exchange, parses the payload, and republishes the
   structured JSON to a second exchange for downstream consumers.
-- `scripts/cat_location_daemon.py` – consumes tracker events from the shared
-  exchange, maps coordinates to placemarks from `Locations.kml`, and republishes
-  location updates on its own exchange.
+- `cat_location_daemon.c` / `cat_location_daemon` – consumes tracker events from
+  the shared exchange, maps coordinates to placemarks from `Locations.kml`, and
+  republishes location updates on its own exchange.
 - `tests/` – Python utilities for exercising the proxy. `run_proxy_tests.py`
   spins up a client/server pair for various scenarios, `run_amqp_integration.py`
   orchestrates the Podman-backed RabbitMQ flow, and `echo_server.py` provides a
