@@ -52,6 +52,7 @@ install(FILES scripts/__init__.py DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcppro
 install(FILES tcpproxy.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES Locations.kml DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME Locations.kml.sample)
 install(FILES cat_location.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system)
+install(FILES tracker_parser_daemon.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

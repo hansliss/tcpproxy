@@ -1,0 +1,20 @@
+[Unit]
+Description=Publish parsed position updates from tracker events
+After=network-online.target rabbitmq-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/tcpproxy/tracker_parser_daemon \
+  --input-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
+  --input-queue= tracker.events.service \
+  --input-exchange= tcpproxy.events \
+  --input-routing-key=tracker.raw \
+  --output-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
+  --output-exchange=tracker.location \
+  --output-routing-key=cat.position \
+  --log-level=WARN
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

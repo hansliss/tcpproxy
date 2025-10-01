@@ -1,5 +1,6 @@
-tcpproxy
 *.o
+*~
+*#
 
 Makefile
 config.h
