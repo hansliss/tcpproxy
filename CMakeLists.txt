@@ -32,11 +32,11 @@ add_executable(tracker_parser_daemon
 )
 
 target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")
-target_compile_definitions(tcpproxy PRIVATE DEFAULT_AMQP_HELPER_PATH="${CMAKE_INSTALL_FULL_LIBEXECDIR}/tcpproxy/observer_amqp_publisher.py")
 
-target_include_directories(tcpproxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(tcpproxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR})
 target_include_directories(tracker_parser_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${PCRE2_INCLUDE_DIR})
 
+target_link_libraries(tcpproxy PRIVATE ${RABBITMQ_LIBRARY})
 target_link_libraries(tracker_parser_daemon PRIVATE ${RABBITMQ_LIBRARY} ${PCRE2_LIBRARY})
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -46,13 +46,12 @@ endif()
 
 install(TARGETS tcpproxy RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
 install(TARGETS tracker_parser_daemon RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcpproxy)
-install(PROGRAMS scripts/observer_amqp_publisher.py DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcpproxy)
 install(PROGRAMS scripts/cat_location_daemon.py DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcpproxy)
 install(FILES scripts/__init__.py DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcpproxy)
 install(FILES tcpproxy.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES Locations.kml DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME Locations.kml.sample)
-install(FILES cat_location.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system)
-install(FILES tracker_parser_daemon.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system)
+install(FILES cat_location.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system RENAME cat_location.service.sample)
+install(FILES tracker_parser_daemon.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system RENAME tracker_parser_daemon.service.sample)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

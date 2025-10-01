@@ -118,7 +118,8 @@ void usage(char *progname) {
   fprintf(stderr,
           "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-p <pid file>] [-O <observer config>]\n"
           "  -O file=/path/to/events.log   Append observer output to a text logfile\n"
-          "  -O amqp=<amqp URI>            Publish JSON events to RabbitMQ via helper\n",
+          "  -O amqp=<amqp URI>            Publish JSON events to RabbitMQ\n"
+          "  (only one -O value may be supplied; choose either file or amqp)\n",
           progname);
 }
 

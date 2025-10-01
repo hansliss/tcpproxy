@@ -23,7 +23,6 @@ except ImportError as exc:  # pragma: no cover
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
-HELPER_SCRIPT = REPO_ROOT / "scripts" / "observer_amqp_publisher.py"
 LOCATION_DAEMON = REPO_ROOT / "scripts" / "cat_location_daemon.py"
 TRACKER_PARSER_BIN = Path(os.environ.get("TCPPROXY_TRACKER_PARSER", REPO_ROOT / "build" / "tracker_parser_daemon"))
 KML_PATH = REPO_ROOT / "Locations.kml"
@@ -165,7 +164,6 @@ def start_proxy(local_port: int, remote_port: int, logdir: Path, observer: str, 
         observer
     ]
     env = os.environ.copy()
-    env.setdefault("TCPPROXY_AMQP_HELPER", str(HELPER_SCRIPT))
     proxy_log = open(logdir / "proxy.log", "wb")
     if verbose:
         print("[start_proxy]", " ".join(cmd))

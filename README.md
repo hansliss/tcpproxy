@@ -87,12 +87,10 @@ tcpproxy -l 0.0.0.0:7700 -r 47.88.85.196:7700 -o /var/log/tcpproxy \
 ```
 
 Events are published as JSON documents containing the same fields as the file
-logger. The helper script used to publish messages defaults to
-`/usr/local/libexec/tcpproxy/observer_amqp_publisher.py` after installation
-(adjust the path if you chose a different prefix). Override the helper path by
-setting the
-`TCPPROXY_AMQP_HELPER` environment variable if you relocate the script. Ensure
-the Python `pika` package is installed on the host.
+logger. When AMQP mode is selected (`-O amqp=...`) the proxy now connects to
+RabbitMQ directly via librabbitmq; no external helper process or Python
+dependencies are required. The observer supports exactly one target at a time,
+so `-O file=...` and `-O amqp=...` cannot be combined.
 
 When using the AMQP mode, specify the target exchange and routing key in the
 connection URI query (for example
@@ -130,7 +128,7 @@ python3 scripts/cat_location_daemon.py \
 
 Run it as a foreground process for local testing, or install it as a systemd
 service that points at the same AMQP broker as the proxy. A sample unit file
-is provided (`cat_location.service`). Bind a queue to the `cat.location`
+is installed as `cat_location.service.sample`. Bind a queue to the `cat.location`
 exchange (topic) with the `cat.position` routing key to receive updates.
 
 ## Test Harness
@@ -184,15 +182,11 @@ The repository is intentionally small and is organised as follows:
   system resolves.
 - `observer.c` / `observer.h` – pluggable observer back-end. It parses the
   `-O` option, maintains shared configuration, and creates per-connection
-  instances that either append to a logfile or stream JSON events to RabbitMQ
-  using the helper script. The AMQP helper now publishes to a topic exchange so
-  multiple consumers can bind queues without changing the proxy configuration.
+  instances that either append to a logfile or publish JSON events directly to
+  RabbitMQ.
 - `tracker_parser.c` / `tracker_parser.h` – streaming parser used by the
   observer to reassemble tracker packets from arbitrary chunk boundaries and
   emit bracketed messages only when they pass basic validation.
-- `scripts/observer_amqp_publisher.py` – the helper process launched by the
-  AMQP observer; it reads JSON lines on stdin and publishes them with `pika`.
-  Query parameters in the `-O amqp=…` string control the exchange/routing key.
 - `tracker_parser_daemon.c` – consumes raw tracker events from the
   shared `tcpproxy.events` exchange, parses the payload, and republishes the
   structured JSON to a second exchange for downstream consumers.
@@ -217,13 +211,8 @@ Key behaviours:
   payloads are reconstructed. Events contain the timestamp, direction, source
   IP, connection identifier, and payload, and they can be routed to multiple
   back-ends without touching the hot-path forwarding code.
-- The optional AMQP integration keeps the C proxy dependency-free: all AMQP
-  specifics live in the helper process, which can be swapped by setting
-  `TCPPROXY_AMQP_HELPER`.
-- By default CMake installs the helper under `/usr/local/libexec/tcpproxy`
-  (or the equivalent path for your chosen prefix); running the proxy directly
-  from the build tree should export `TCPPROXY_AMQP_HELPER` so tests can locate the
-  in-tree script.
+- The optional AMQP integration is now handled entirely inside the proxy via
+  librabbitmq, so no external helper needs to be shipped or configured.
 - The overall install prefix defaults to `/usr/local`; adjust it via
   `-DCMAKE_INSTALL_PREFIX=` when configuring if you need a different layout.
 
