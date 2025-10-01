@@ -193,6 +193,9 @@ The repository is intentionally small and is organised as follows:
 - `scripts/observer_amqp_publisher.py` – the helper process launched by the
   AMQP observer; it reads JSON lines on stdin and publishes them with `pika`.
   Query parameters in the `-O amqp=…` string control the exchange/routing key.
+- `tracker_parser_daemon.c` – consumes raw tracker events from the
+  shared `tcpproxy.events` exchange, parses the payload, and republishes the
+  structured JSON to a second exchange for downstream consumers.
 - `scripts/cat_location_daemon.py` – consumes tracker events from the shared
   exchange, maps coordinates to placemarks from `Locations.kml`, and republishes
   location updates on its own exchange.

@@ -15,3 +15,4 @@ tests/logs/*
 codex_resume.sh
 __pycache__/
 **/__pycache__/
+run_*.sh

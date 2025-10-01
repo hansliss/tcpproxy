@@ -18,6 +18,38 @@ import pika
 
 LOGGER = logging.getLogger("cat_location_daemon")
 
+# Filter to suppress noisy connection reset tracebacks from pika. We still log a
+# concise message in the reconnect loop below.
+
+
+class _PikaConnectionResetFilter(logging.Filter):
+    patterns = ("Connection reset by peer", "StreamLostError")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(pattern in msg for pattern in self.patterns)
+
+
+def _install_pika_filters() -> None:
+    flt = _PikaConnectionResetFilter()
+    targets = (
+        "",
+        "pika",
+        "pika.connection",
+        "pika.channel",
+        "pika.adapters",
+        "pika.adapters.base_connection",
+        "pika.adapters.blocking_connection",
+        "pika.adapters.utils",
+        "pika.adapters.utils.connection_workflow",
+        "pika.adapters.utils.io_services_utils",
+    )
+    for name in targets:
+        logging.getLogger(name).addFilter(flt)
+
+
+_install_pika_filters()
+
 # Regular expression to extract tracker coordinates from payloads.
 import re
 UD_PATTERN = re.compile(
@@ -141,11 +173,46 @@ class CatLocationDaemon:
         self.output_routing_key = output_routing_key
         self.resolver = LocationResolver(kml_path)
         self._stop = False
+        self._last_position: Optional[str] = None
         self._connection: Optional[pika.BlockingConnection] = None
         self._output_connection: Optional[pika.BlockingConnection] = None
         self._channel = None
         self._output_channel = None
         self._publisher: Optional[LocationPublisher] = None
+
+    def _close_connections(self) -> None:
+        last_position = self._publisher.last_position if self._publisher else self._last_position
+        if self._channel:
+            try:
+                if self._channel.is_open:
+                    self._channel.close()
+            except Exception:
+                pass
+        if self._connection:
+            try:
+                if self._connection.is_open:
+                    self._connection.close()
+            except Exception:
+                pass
+        if self._output_channel:
+            try:
+                if self._output_channel.is_open:
+                    self._output_channel.close()
+            except Exception:
+                pass
+        if self._output_connection:
+            try:
+                if self._output_connection.is_open:
+                    self._output_connection.close()
+            except Exception:
+                pass
+        self._connection = None
+        self._output_connection = None
+        self._channel = None
+        self._output_channel = None
+        self._publisher = None
+        self._last_position = last_position
+        self._last_position = self._publisher.last_position if self._publisher else self._last_position
         self._last_position: Optional[str] = None
 
     def stop(self, *_: object) -> None:
@@ -195,30 +262,36 @@ class CatLocationDaemon:
                         break
                     if method is None:
                         continue
+                    acknowledged = False
                     try:
                         event = json.loads(body)
                         if isinstance(event, dict):
                             self._publisher.process_event(event)  # type: ignore
                             self._last_position = self._publisher.last_position
+                            self._channel.basic_ack(method.delivery_tag)
+                            acknowledged = True
                     except json.JSONDecodeError:
                         LOGGER.warning("Invalid JSON payload: %r", body)
-                    finally:
-                        self._channel.basic_ack(method.delivery_tag)
+                    except Exception:
+                        if not acknowledged:
+                            try:
+                                self._channel.basic_nack(method.delivery_tag, requeue=True)
+                            except Exception:
+                                pass
+                        raise
             except (pika.exceptions.AMQPConnectionError, OSError) as exc:
-                LOGGER.warning("AMQP connection failed: %s", exc)
+                message = str(exc)
+                if "Connection reset by peer" in message:
+                    LOGGER.info("RabbitMQ connection reset by peer; retrying in 5s")
+                else:
+                    LOGGER.warning("AMQP connection failed: %s", exc)
+                self._close_connections()
                 time.sleep(5)
             except Exception as exc:  # pylint: disable=broad-except
                 LOGGER.exception("Unhandled exception in daemon: %s", exc)
+                self._close_connections()
                 time.sleep(5)
-            finally:
-                if self._connection and self._connection.is_open:
-                    self._connection.close()
-                if self._output_connection and self._output_connection.is_open:
-                    self._output_connection.close()
-                self._connection = None
-                self._output_connection = None
-                self._channel = None
-                self._publisher = None
+        self._close_connections()
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:

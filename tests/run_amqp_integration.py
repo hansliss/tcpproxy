@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
 HELPER_SCRIPT = REPO_ROOT / "scripts" / "observer_amqp_publisher.py"
 LOCATION_DAEMON = REPO_ROOT / "scripts" / "cat_location_daemon.py"
+TRACKER_PARSER_BIN = Path(os.environ.get("TCPPROXY_TRACKER_PARSER", REPO_ROOT / "build" / "tracker_parser_daemon"))
 KML_PATH = REPO_ROOT / "Locations.kml"
 TRACKER_EXCHANGE = "tcpproxy.events"
 TRACKER_ROUTING_KEY = "tracker.raw"
@@ -43,12 +44,21 @@ def sanitize_uri(uri: str):
     return urllib.parse.urlunparse(sanitized), query
 
 
-def ensure_queue(uri: str, queue: str, *, exchange: str | None = None, routing_key: str | None = None, verbose: bool = False) -> None:
+def ensure_queue(
+    uri: str,
+    queue: str,
+    *,
+    exchange: str | None = None,
+    routing_key: str | None = None,
+    verbose: bool = False,
+    durable: bool = False,
+    auto_delete: bool = True,
+) -> None:
     clean_uri, _ = sanitize_uri(uri)
     params = pika.URLParameters(clean_uri)
     connection = pika.BlockingConnection(params)
     channel = connection.channel()
-    channel.queue_declare(queue=queue, durable=False, auto_delete=True)
+    channel.queue_declare(queue=queue, durable=durable, auto_delete=auto_delete)
     if exchange:
         if verbose:
             print(f"[ensure_queue] binding {queue} to {exchange} ({routing_key or '#'} )")
@@ -164,6 +174,43 @@ def start_proxy(local_port: int, remote_port: int, logdir: Path, observer: str, 
     return proc
 
 
+def start_tracker_parser(
+    input_uri: str,
+    input_queue: str,
+    output_uri: str,
+    output_exchange: str,
+    output_routing_key: str,
+    logdir: Path,
+    verbose: bool,
+) -> subprocess.Popen:
+    if not TRACKER_PARSER_BIN.exists():
+        raise RuntimeError("Build the tracker_parser_daemon before running this test")
+
+    cmd = [
+        str(TRACKER_PARSER_BIN),
+        "--input-uri",
+        input_uri,
+        "--input-queue",
+        input_queue,
+        "--input-exchange",
+        TRACKER_EXCHANGE,
+        "--input-routing-key",
+        TRACKER_ROUTING_KEY,
+        "--output-uri",
+        output_uri,
+        "--output-exchange",
+        output_exchange,
+        "--output-routing-key",
+        output_routing_key,
+        "--log-level",
+        "INFO",
+    ]
+    parser_log = open(logdir / "tracker_parser.log", "wb")
+    if verbose:
+        print("[start_tracker_parser]", " ".join(cmd))
+    return subprocess.Popen(cmd, stdout=parser_log, stderr=subprocess.STDOUT)
+
+
 def start_consumer(uri: str, queue: str, sink: list, stop_event: threading.Event, verbose: bool, *, exchange: str | None = None, routing_key: str | None = None) -> threading.Thread:
     def _consume():
         clean_uri, _ = sanitize_uri(uri)
@@ -215,13 +262,15 @@ def send_tracker_message(port: int, payload: bytes, verbose: bool) -> bytes:
 def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
     logdir = Path(tempfile.mkdtemp(prefix="amqp-integration-", dir=str(LOG_ROOT)))
     container = None
-    server = proxy = location_proc = None
+    server = proxy = location_proc = tracker_parser_proc = None
     tracker_results: list = []
     tracker_thread = None
     location_results_primary: list = []
     location_results_secondary: list = []
     location_thread_primary = None
     location_thread_secondary = None
+    parsed_results: list = []
+    parsed_thread = None
     stop_event = threading.Event()
 
     try:
@@ -243,6 +292,10 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         location_output_queue = "cat.location.test"
         tracker_input_queue = "tracker.events.test"
         tracker_tap_queue = "tracker.events.tap"
+        tracker_parser_input_queue = "tracker.events.parser"
+        tracker_parsed_exchange = "tracker.events.parsed"
+        tracker_parsed_routing_key = "tracker.parsed"
+        tracker_parsed_queue = "tracker.parsed.test"
         input_uri_clean, _ = sanitize_uri(uri)
         output_uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F"
         ensure_queue(
@@ -251,6 +304,15 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             exchange=TRACKER_EXCHANGE,
             routing_key=TRACKER_ROUTING_KEY,
             verbose=verbose,
+        )
+        ensure_queue(
+            input_uri_clean,
+            tracker_parser_input_queue,
+            exchange=TRACKER_EXCHANGE,
+            routing_key=TRACKER_ROUTING_KEY,
+            verbose=verbose,
+            durable=True,
+            auto_delete=False,
         )
         location_cmd = [
             sys.executable,
@@ -277,6 +339,17 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         if verbose:
             print("[start_location]", " ".join(location_cmd))
         location_proc = subprocess.Popen(location_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        tracker_parser_proc = start_tracker_parser(
+            input_uri_clean,
+            tracker_parser_input_queue,
+            output_uri,
+            tracker_parsed_exchange,
+            tracker_parsed_routing_key,
+            logdir,
+            verbose,
+        )
+        time.sleep(1.0)
 
         consumer_uri = f"amqp://guest:guest@127.0.0.1:{rabbit_port}/%2F"
         location_thread_primary = start_consumer(
@@ -313,6 +386,22 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             exchange=TRACKER_EXCHANGE,
             routing_key=TRACKER_ROUTING_KEY,
         )
+        ensure_queue(
+            consumer_uri,
+            tracker_parsed_queue,
+            exchange=tracker_parsed_exchange,
+            routing_key=tracker_parsed_routing_key,
+            verbose=verbose,
+        )
+        parsed_thread = start_consumer(
+            consumer_uri,
+            tracker_parsed_queue,
+            parsed_results,
+            stop_event,
+            verbose,
+            exchange=tracker_parsed_exchange,
+            routing_key=tracker_parsed_routing_key,
+        )
 
         payload = b"[SG*1234567890*0066*UD,270524,061232,V,9.999851,N,30.000207,W,0.0,176,11,00,80,99,0,50,00000000,1,1,240,1,36,57745184,22,,00]"
         reply = send_tracker_message(local_port, payload, verbose)
@@ -320,12 +409,19 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             raise AssertionError("Proxy failed to echo tracker payload")
 
         deadline = time.time() + 10
-        while time.time() < deadline and (not tracker_results or not location_results_primary or not location_results_secondary):
+        while time.time() < deadline and (
+            not tracker_results
+            or not location_results_primary
+            or not location_results_secondary
+            or not parsed_results
+        ):
             time.sleep(0.2)
         if not tracker_results:
             raise AssertionError("No tracker event received from RabbitMQ")
         if not location_results_primary or not location_results_secondary:
             raise AssertionError("No location event received from RabbitMQ")
+        if not parsed_results:
+            raise AssertionError("No parsed tracker event received")
 
         tracker_event = tracker_results[0]
         if isinstance(tracker_event, dict):
@@ -344,9 +440,21 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
                     raise AssertionError(f"Tracker ID mismatch (consumer {idx})")
             else:
                 raise AssertionError(f"Location event {idx} not JSON")
+        parsed_event = parsed_results[0]
+        if isinstance(parsed_event, dict):
+            if parsed_event.get("tracker_id") != expected_tracker:
+                raise AssertionError("Parsed tracker ID mismatch")
+            if abs(parsed_event.get("latitude", 0.0) - 9.999851) > 1e-6:
+                raise AssertionError("Parsed latitude mismatch")
+            if abs(parsed_event.get("longitude", 0.0) + 30.000207) > 1e-6:
+                raise AssertionError("Parsed longitude mismatch")
+        else:
+            raise AssertionError("Parsed event not JSON")
+
         if verbose:
             print("[success] location consumer 1", location_results_primary[0])
             print("[success] location consumer 2", location_results_secondary[0])
+            print("[success] parsed consumer", parsed_event)
 
     finally:
         stop_event.set()
@@ -356,6 +464,13 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
         if server:
             server.terminate()
             server.wait(timeout=5)
+        if tracker_parser_proc:
+            tracker_parser_proc.terminate()
+            try:
+                tracker_parser_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                tracker_parser_proc.kill()
+                tracker_parser_proc.wait(timeout=5)
         if location_proc:
             location_proc.terminate()
             try:
@@ -374,6 +489,8 @@ def run_test(keep_logs: bool = False, verbose: bool = False) -> None:
             location_thread_secondary.join(timeout=5)
         if tracker_thread:
             tracker_thread.join(timeout=5)
+        if parsed_thread:
+            parsed_thread.join(timeout=5)
         if container:
             stop_podman(container)
         if not keep_logs:
