@@ -7,13 +7,17 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/local/libexec/tcpproxy/tracker_parser_daemon \
   --input-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
-  --input-queue= tracker.events.service \
-  --input-exchange= tcpproxy.events \
+  --input-queue=tracker.events.service \
+  --input-exchange=tcpproxy.events \
   --input-routing-key=tracker.raw \
   --output-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
   --output-exchange=tracker.location \
   --output-routing-key=cat.position \
-  --log-level=WARN
+  --log-level=WARN \
+  --pidfile=/run/tracker_parser_daemon/tracker_parser_daemon.pid
+PIDFile=/run/tracker_parser_daemon/tracker_parser_daemon.pid
+RuntimeDirectory=tracker_parser_daemon
+RuntimeDirectoryMode=0755
 Restart=on-failure
 
 [Install]

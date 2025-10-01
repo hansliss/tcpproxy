@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.15)
 project(tcpproxy VERSION 1.0 LANGUAGES C)
 
 include(GNUInstallDirs)
+include(CTest)
+enable_testing()
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -27,15 +29,25 @@ add_executable(tcpproxy
   tcpproxy.c
   observer.c
   tracker_parser.c
+  daemon_common.c
 )
 
 add_executable(cat_location_daemon
   cat_location_daemon.c
+  daemon_common.c
 )
 
 add_executable(tracker_parser_daemon
   tracker_parser_daemon.c
+  daemon_common.c
 )
+
+add_executable(daemon_common_tests
+  tests/daemon_common_test.c
+  daemon_common.c
+)
+target_include_directories(daemon_common_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME daemon_common_tests COMMAND daemon_common_tests)
 
 target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")
 
@@ -59,8 +71,11 @@ install(TARGETS tracker_parser_daemon RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXE
 install(FILES scripts/__init__.py DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tcpproxy)
 install(FILES tcpproxy.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES Locations.kml DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME Locations.kml.sample)
-install(FILES cat_location.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system RENAME cat_location.service.sample)
+install(FILES cat_location_daemon.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system RENAME cat_location_daemon.service.sample)
 install(FILES tracker_parser_daemon.service DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/system RENAME tracker_parser_daemon.service.sample)
+install(FILES configs/tcpproxy.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME tcpproxy.conf.sample)
+install(FILES configs/cat_location_daemon.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME cat_location_daemon.conf.sample)
+install(FILES configs/tracker_parser_daemon.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR} RENAME tracker_parser_daemon.conf.sample)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

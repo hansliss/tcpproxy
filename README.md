@@ -92,6 +92,17 @@ RabbitMQ directly via librabbitmq; no external helper process or Python
 dependencies are required. The observer supports exactly one target at a time,
 so `-O file=...` and `-O amqp=...` cannot be combined.
 
+The proxy and both helper daemons accept a simple configuration file via
+`--config /path/to.conf`. Each file is composed of `key=value` pairs (blank
+lines and `#` comments are ignored), and any value supplied on the command line
+overrides the file. For `tcpproxy`, recognised keys include `local`, `remote`,
+`log-dir`, `pidfile`, and `observer`. For `cat_location_daemon`, keys include
+`input-uri`, `input-queue`, `input-exchange`, `input-routing-key`, `output-uri`,
+`output-exchange`, `output-routing-key`, `kml`, `pidfile`, and `log-level`. For
+`tracker_parser_daemon`, recognised keys include `input-uri`, `input-queue`,
+`input-exchange`, `input-routing-key`, `output-uri`, `output-exchange`,
+`output-routing-key`, `pidfile`, and `log-level`.
+
 When using the AMQP mode, specify the target exchange and routing key in the
 connection URI query (for example
 `amqp://.../?exchange=tcpproxy.events&routing_key=tracker.raw`). Consumers can
@@ -126,9 +137,31 @@ and edit it to match your real-world placemarks before launching the daemon.
   --kml=/usr/local/etc/Locations.kml
 ```
 
+Example configuration entries for the location daemon:
+
+```
+input-uri=amqp://guest:guest@127.0.0.1:5672/%2F
+input-queue=tracker.events.cli
+input-exchange=tcpproxy.events
+output-exchange=cat.location
+output-routing-key=cat.position
+kml=/usr/local/etc/Locations.kml
+log-level=INFO
+```
+
+Example configuration entries for the proxy daemon:
+
+```
+local=0.0.0.0:7000
+remote=tracker.example.net:5000
+log-dir=/var/log/tcpproxy
+pidfile=/run/tcpproxy.pid
+observer=file=/var/log/tcpproxy/events.log
+```
+
 Run it as a foreground process for local testing, or install it as a systemd
 service that points at the same AMQP broker as the proxy. A sample unit file
-is installed as `cat_location.service.sample`. Bind a queue to the `cat.location`
+is installed as `cat_location_daemon.service.sample`. Bind a queue to the `cat.location`
 exchange (topic) with the `cat.position` routing key to receive updates.
 
 ## Test Harness

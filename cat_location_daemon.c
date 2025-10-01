@@ -16,6 +16,8 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "daemon_common.h"
+
 struct location {
   char *name;
   double latitude;
@@ -36,6 +38,8 @@ struct daemon_config {
   char *output_exchange;
   char *output_routing_key;
   char *kml_path;
+  char *pidfile_path;
+  char *config_path;
   int log_level;
 };
 
@@ -47,6 +51,8 @@ enum {
 };
 
 static volatile sig_atomic_t g_stop = 0;
+
+static int parse_log_level(const char *level);
 
 static void log_message(int level, int configured_level, const char *fmt, ...) {
   if (level > configured_level) {
@@ -79,168 +85,43 @@ static void signal_handler(int sig) {
   g_stop = 1;
 }
 
-static char *dup_string(const char *value) {
-  if (!value) {
-    return NULL;
+static void set_string(char **dest, const char *value) {
+  if (!dest) {
+    return;
   }
-  return strdup(value);
+  free(*dest);
+  *dest = value ? daemon_dup_string(value) : NULL;
 }
 
-struct uri_parts {
-  char host[256];
-  char username[256];
-  char password[256];
-  char vhost[256];
-  int port;
-};
-
-static int hex_value_uri(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return 10 + (c - 'a');
-  }
-  if (c >= 'A' && c <= 'F') {
-    return 10 + (c - 'A');
-  }
-  return -1;
-}
-
-static char *percent_decode_uri(const char *input) {
-  if (!input) {
-    return NULL;
-  }
-  size_t len = strlen(input);
-  char *out = (char *)malloc(len + 1);
-  if (!out) {
-    return NULL;
-  }
-  size_t oi = 0;
-  for (size_t i = 0; i < len; i++) {
-    if (input[i] == '%' && i + 2 < len && isxdigit((unsigned char)input[i + 1]) && isxdigit((unsigned char)input[i + 2])) {
-      int hi = hex_value_uri(input[i + 1]);
-      int lo = hex_value_uri(input[i + 2]);
-      if (hi >= 0 && lo >= 0) {
-        out[oi++] = (char)((hi << 4) | lo);
-        i += 2;
-        continue;
-      }
-    } else if (input[i] == '+') {
-      out[oi++] = ' ';
-      continue;
-    }
-    out[oi++] = input[i];
-  }
-  out[oi] = '\0';
-  return out;
-}
-
-static int parse_amqp_uri(const char *uri, struct uri_parts *out) {
-  if (!uri || !out || strncmp(uri, "amqp://", 7) != 0) {
+static int apply_config_key(struct daemon_config *cfg, const char *key, const char *value) {
+  if (!cfg || !key) {
     return -1;
   }
-  memset(out, 0, sizeof(*out));
-  strcpy(out->username, "guest");
-  strcpy(out->password, "guest");
-  strcpy(out->vhost, "/");
-  out->port = 5672;
-
-  const char *cursor = uri + 7;
-  const char *at = strchr(cursor, '@');
-  if (at) {
-    const char *cred = cursor;
-    const char *col = memchr(cred, ':', (size_t)(at - cred));
-    if (col) {
-      char *user = strndup(cred, (size_t)(col - cred));
-      char *pass = strndup(col + 1, (size_t)(at - col - 1));
-      if (!user || !pass) {
-        free(user);
-        free(pass);
-        return -1;
-      }
-      char *decoded_user = percent_decode_uri(user);
-      char *decoded_pass = percent_decode_uri(pass);
-      free(user);
-      free(pass);
-      if (!decoded_user || !decoded_pass) {
-        free(decoded_user);
-        free(decoded_pass);
-        return -1;
-      }
-      strncpy(out->username, decoded_user, sizeof(out->username) - 1);
-      strncpy(out->password, decoded_pass, sizeof(out->password) - 1);
-      free(decoded_user);
-      free(decoded_pass);
-    } else {
-      char *user = strndup(cred, (size_t)(at - cred));
-      if (!user) {
-        return -1;
-      }
-      char *decoded_user = percent_decode_uri(user);
-      free(user);
-      if (!decoded_user) {
-        return -1;
-      }
-      strncpy(out->username, decoded_user, sizeof(out->username) - 1);
-      free(decoded_user);
-    }
-    cursor = at + 1;
+  if (!value) {
+    value = "";
   }
-
-  const char *slash = strchr(cursor, '/');
-  const char *host_part = cursor;
-  char hostbuf[256];
-  if (slash) {
-    size_t host_len = (size_t)(slash - cursor);
-    if (host_len >= sizeof(hostbuf)) {
-      return -1;
-    }
-    memcpy(hostbuf, cursor, host_len);
-    hostbuf[host_len] = '\0';
-    cursor = slash + 1;
+  if (strcmp(key, "input-uri") == 0) {
+    set_string(&cfg->input_uri, value);
+  } else if (strcmp(key, "input-queue") == 0) {
+    set_string(&cfg->input_queue, value);
+  } else if (strcmp(key, "input-exchange") == 0) {
+    set_string(&cfg->input_exchange, value);
+  } else if (strcmp(key, "input-routing-key") == 0) {
+    set_string(&cfg->input_routing_key, value);
+  } else if (strcmp(key, "output-uri") == 0) {
+    set_string(&cfg->output_uri, value);
+  } else if (strcmp(key, "output-exchange") == 0) {
+    set_string(&cfg->output_exchange, value);
+  } else if (strcmp(key, "output-routing-key") == 0) {
+    set_string(&cfg->output_routing_key, value);
+  } else if (strcmp(key, "kml") == 0) {
+    set_string(&cfg->kml_path, value);
+  } else if (strcmp(key, "pidfile") == 0 || strcmp(key, "pid-file") == 0) {
+    set_string(&cfg->pidfile_path, value);
+  } else if (strcmp(key, "log-level") == 0) {
+    cfg->log_level = parse_log_level(value);
   } else {
-    strncpy(hostbuf, cursor, sizeof(hostbuf));
-    hostbuf[sizeof(hostbuf) - 1] = '\0';
-    cursor = NULL;
-  }
-
-  const char *colon = strchr(host_part, ':');
-  if (colon && (!slash || colon < slash)) {
-    size_t host_len = (size_t)(colon - host_part);
-    if (host_len >= sizeof(out->host)) {
-      return -1;
-    }
-    memcpy(out->host, host_part, host_len);
-    out->host[host_len] = '\0';
-    out->port = atoi(colon + 1);
-  } else {
-    strncpy(out->host, hostbuf, sizeof(out->host) - 1);
-  }
-
-  if (slash) {
-    const char *qmark = cursor ? strchr(cursor, '?') : NULL;
-    size_t vlen = cursor ? (qmark ? (size_t)(qmark - cursor) : strlen(cursor)) : 0;
-    if (vlen > 0) {
-      char *vhost_raw = strndup(cursor, vlen);
-      if (!vhost_raw) {
-        return -1;
-      }
-      char *decoded = percent_decode_uri(vhost_raw);
-      free(vhost_raw);
-      if (!decoded) {
-        return -1;
-      }
-      strncpy(out->vhost, decoded, sizeof(out->vhost) - 1);
-      free(decoded);
-    }
-  }
-
-  if (out->port <= 0) {
-    out->port = 5672;
-  }
-  if (out->host[0] == '\0') {
-    strcpy(out->host, "127.0.0.1");
+    return -1;
   }
   return 0;
 }
@@ -264,7 +145,7 @@ static int location_resolver_add(struct location_resolver *resolver,
   if (!resolver || !name) {
     return -1;
   }
-  char *dup = dup_string(name);
+  char *dup = daemon_dup_string(name);
   if (!dup) {
     return -1;
   }
@@ -649,16 +530,13 @@ static void usage(const char *prog) {
           "  --output-exchange NAME     Exchange for location updates\n"
           "  --output-routing-key KEY   Routing key (or queue) for location updates\n"
           "  --kml PATH                 KML file containing placemarks (required)\n"
+          "  --pidfile PATH             Optional pidfile to create while running\n"
+          "  --config PATH              Optional configuration file (key=value); CLI overrides file values\n"
           "  --log-level LEVEL          DEBUG, INFO, WARN, or ERROR (default INFO)\n",
           prog);
 }
 
 static int parse_arguments(int argc, char **argv, struct daemon_config *cfg) {
-  memset(cfg, 0, sizeof(*cfg));
-  cfg->input_queue = strdup("tcpproxy.integration");
-  cfg->output_routing_key = strdup("cat.location");
-  cfg->log_level = LOG_INFO;
-
   static struct option options[] = {
       {"input-uri", required_argument, NULL, 1},
       {"input-queue", required_argument, NULL, 2},
@@ -669,6 +547,8 @@ static int parse_arguments(int argc, char **argv, struct daemon_config *cfg) {
       {"output-routing-key", required_argument, NULL, 7},
       {"kml", required_argument, NULL, 8},
       {"log-level", required_argument, NULL, 9},
+      {"config", required_argument, NULL, 10},
+      {"pidfile", required_argument, NULL, 11},
       {0, 0, 0, 0}};
 
   while (1) {
@@ -680,38 +560,46 @@ static int parse_arguments(int argc, char **argv, struct daemon_config *cfg) {
     switch (c) {
     case 1:
       free(cfg->input_uri);
-      cfg->input_uri = dup_string(optarg);
+      cfg->input_uri = daemon_dup_string(optarg);
       break;
     case 2:
       free(cfg->input_queue);
-      cfg->input_queue = dup_string(optarg);
+      cfg->input_queue = daemon_dup_string(optarg);
       break;
     case 3:
       free(cfg->input_exchange);
-      cfg->input_exchange = dup_string(optarg);
+      cfg->input_exchange = daemon_dup_string(optarg);
       break;
     case 4:
       free(cfg->input_routing_key);
-      cfg->input_routing_key = dup_string(optarg);
+      cfg->input_routing_key = daemon_dup_string(optarg);
       break;
     case 5:
       free(cfg->output_uri);
-      cfg->output_uri = dup_string(optarg);
+      cfg->output_uri = daemon_dup_string(optarg);
       break;
     case 6:
       free(cfg->output_exchange);
-      cfg->output_exchange = dup_string(optarg);
+      cfg->output_exchange = daemon_dup_string(optarg);
       break;
     case 7:
       free(cfg->output_routing_key);
-      cfg->output_routing_key = dup_string(optarg);
+      cfg->output_routing_key = daemon_dup_string(optarg);
       break;
     case 8:
       free(cfg->kml_path);
-      cfg->kml_path = dup_string(optarg);
+      cfg->kml_path = daemon_dup_string(optarg);
       break;
     case 9:
       cfg->log_level = parse_log_level(optarg);
+      break;
+    case 10:
+      free(cfg->config_path);
+      cfg->config_path = daemon_dup_string(optarg);
+      break;
+    case 11:
+      free(cfg->pidfile_path);
+      cfg->pidfile_path = daemon_dup_string(optarg);
       break;
     default:
       usage(argv[0]);
@@ -719,22 +607,35 @@ static int parse_arguments(int argc, char **argv, struct daemon_config *cfg) {
     }
   }
 
+  if (!cfg->input_queue) {
+    cfg->input_queue = daemon_dup_string("tcpproxy.integration");
+  }
+  if (!cfg->output_routing_key) {
+    cfg->output_routing_key = daemon_dup_string("cat.location");
+  }
+  if (!cfg->log_level) {
+    cfg->log_level = LOG_INFO;
+  }
+
   if (!cfg->input_uri || !cfg->kml_path) {
     usage(argv[0]);
     return -1;
   }
   if (!cfg->output_uri) {
-    cfg->output_uri = dup_string(cfg->input_uri);
+    cfg->output_uri = daemon_dup_string(cfg->input_uri);
   }
   if (!cfg->input_routing_key || !*cfg->input_routing_key) {
     free(cfg->input_routing_key);
-    cfg->input_routing_key = cfg->input_queue ? dup_string(cfg->input_queue) : dup_string("#");
+    cfg->input_routing_key = cfg->input_queue ? daemon_dup_string(cfg->input_queue) : daemon_dup_string("#");
   }
   if (!cfg->output_routing_key) {
-    cfg->output_routing_key = dup_string("cat.location");
+    cfg->output_routing_key = daemon_dup_string("cat.location");
   }
   if (!cfg->input_queue || !cfg->output_routing_key) {
     return -1;
+  }
+  if (!cfg->log_level) {
+    cfg->log_level = LOG_INFO;
   }
   return 0;
 }
@@ -748,6 +649,8 @@ static void free_config(struct daemon_config *cfg) {
   free(cfg->output_exchange);
   free(cfg->output_routing_key);
   free(cfg->kml_path);
+  free(cfg->pidfile_path);
+  free(cfg->config_path);
 }
 
 static amqp_connection_state_t open_connection(const char *uri,
@@ -758,8 +661,8 @@ static amqp_connection_state_t open_connection(const char *uri,
                                                const char *routing_key,
                                                bool declare_queue,
                                                bool durable_queue) {
-  struct uri_parts parts;
-  if (parse_amqp_uri(uri, &parts) != 0) {
+  struct daemon_uri_parts parts;
+  if (daemon_parse_amqp_uri(uri, &parts) != 0) {
     log_message(LOG_ERROR, log_level, "Invalid AMQP URI: %s", uri);
     return NULL;
   }
@@ -961,8 +864,36 @@ static int publish_event(amqp_connection_state_t conn,
 
 int main(int argc, char **argv) {
   struct daemon_config cfg;
+  memset(&cfg, 0, sizeof(cfg));
+  cfg.log_level = LOG_INFO;
+  cfg.input_queue = daemon_dup_string("tcpproxy.integration");
+  cfg.output_routing_key = daemon_dup_string("cat.location");
+
+  char *config_path = daemon_find_config_path(argc, argv);
+  if (config_path) {
+    cfg.config_path = config_path;
+    daemon_parse_config_file(cfg.config_path,
+                             (daemon_kv_handler)apply_config_key,
+                             &cfg,
+                             (daemon_log_fn)log_message,
+                             cfg.log_level,
+                             "cat_location_daemon");
+  }
+
   if (parse_arguments(argc, argv, &cfg) != 0) {
+    free_config(&cfg);
     return 1;
+  }
+
+  if (cfg.pidfile_path) {
+    if (daemon_pidfile_create(cfg.pidfile_path,
+                              (daemon_log_fn)log_message,
+                              cfg.log_level,
+                              "cat_location_daemon") != 0) {
+      free_config(&cfg);
+      return 1;
+    }
+    atexit(daemon_pidfile_cleanup);
   }
 
   xmlInitParser();
@@ -1113,7 +1044,7 @@ int main(int argc, char **argv) {
                                     strlen(json_out),
                                     cfg.log_level) == 0) {
                     free(last_position);
-                    last_position = dup_string(position);
+                    last_position = daemon_dup_string(position);
                   } else {
                     result = -1;
                   }
@@ -1139,6 +1070,7 @@ int main(int argc, char **argv) {
   close_connection(input_conn, INPUT_CHANNEL);
   close_connection(output_conn, OUTPUT_CHANNEL);
   location_resolver_free(&resolver);
+  daemon_pidfile_cleanup();
   free_config(&cfg);
   xmlCleanupParser();
   return 0;

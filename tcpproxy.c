@@ -1,5 +1,6 @@
 #include<signal.h>
 #include<stdio.h>
+#include<stdarg.h>
 #include<sys/socket.h>
 #include<arpa/inet.h>
 #include<netinet/in.h>
@@ -13,7 +14,9 @@
 #include<time.h>
 #include<sys/wait.h>
 #include<limits.h>
+#include<getopt.h>
 
+#include "daemon_common.h"
 #include "observer.h"
 
 #define CONTEXT_LENGTH 256
@@ -23,10 +26,84 @@
  * message with the component that triggered it (listener, connection, etc.).
  */
 static char current_log_context[CONTEXT_LENGTH] = "proxy";
-static char *pidfile_path_global = NULL;
 
-static void cleanup_pidfile(void);
 static void handle_exit_signal(int signo);
+
+struct proxy_config {
+  char *local_address;
+  char *remote_address;
+  char *logdir;
+  char *pidfile_path;
+  char *observer_config;
+  char *config_path;
+};
+
+static void proxy_set_string(char **dest, const char *value) {
+  if (!dest) {
+    return;
+  }
+  free(*dest);
+  *dest = value ? daemon_dup_string(value) : NULL;
+}
+
+static void normalise_logdir(char *path) {
+  if (!path) {
+    return;
+  }
+  size_t len = strlen(path);
+  while (len > 1 && path[len - 1] == '/') {
+    path[--len] = '\0';
+  }
+}
+
+static int apply_config_key(struct proxy_config *cfg, const char *key, const char *value) {
+  if (!cfg || !key) {
+    return -1;
+  }
+  if (!value) {
+    value = "";
+  }
+  if (strcmp(key, "local") == 0 || strcmp(key, "local-address") == 0) {
+    proxy_set_string(&cfg->local_address, value);
+  } else if (strcmp(key, "remote") == 0 || strcmp(key, "remote-address") == 0) {
+    proxy_set_string(&cfg->remote_address, value);
+  } else if (strcmp(key, "log-dir") == 0 || strcmp(key, "logdir") == 0) {
+    proxy_set_string(&cfg->logdir, value);
+    normalise_logdir(cfg->logdir);
+  } else if (strcmp(key, "pidfile") == 0 || strcmp(key, "pid-file") == 0) {
+    proxy_set_string(&cfg->pidfile_path, value);
+  } else if (strcmp(key, "observer") == 0 || strcmp(key, "observer-config") == 0) {
+    proxy_set_string(&cfg->observer_config, value);
+  } else {
+    return -1;
+  }
+  return 0;
+}
+
+static void free_proxy_config(struct proxy_config *cfg) {
+  if (!cfg) {
+    return;
+  }
+  free(cfg->local_address);
+  free(cfg->remote_address);
+  free(cfg->logdir);
+  free(cfg->pidfile_path);
+  free(cfg->observer_config);
+  free(cfg->config_path);
+  memset(cfg, 0, sizeof(*cfg));
+}
+
+static void config_log_message(int level, int configured_level, const char *fmt, ...) {
+  (void)level;
+  (void)configured_level;
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+  fputc('\n', stderr);
+}
+
+static int parse_arguments(int argc, char **argv, struct proxy_config *cfg);
 
 static void log_set_context(const char *context) {
   if (!context || !*context) {
@@ -116,11 +193,63 @@ void wait_for_children(childproc *list, char *logdir) {
 
 void usage(char *progname) {
   fprintf(stderr,
-          "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-p <pid file>] [-O <observer config>]\n"
+          "Usage: %s -l <local addr:service> -r <remote addr:service> -o <log directory> [-p <pid file>] [-O <observer config>] [--config PATH]\n"
           "  -O file=/path/to/events.log   Append observer output to a text logfile\n"
           "  -O amqp=<amqp URI>            Publish JSON events to RabbitMQ\n"
+          "  --config PATH                 Optional configuration file; CLI overrides file values\n"
           "  (only one -O value may be supplied; choose either file or amqp)\n",
           progname);
+}
+
+static int parse_arguments(int argc, char **argv, struct proxy_config *cfg) {
+  if (!cfg) {
+    return -1;
+  }
+
+  optind = 1;
+  static struct option options[] = {
+      {"local", required_argument, NULL, 'l'},
+      {"remote", required_argument, NULL, 'r'},
+      {"log-dir", required_argument, NULL, 'o'},
+      {"pidfile", required_argument, NULL, 'p'},
+      {"observer", required_argument, NULL, 'O'},
+      {"config", required_argument, NULL, 1000},
+      {0, 0, 0, 0}};
+
+  int c;
+  while ((c = getopt_long(argc, argv, "l:r:o:p:O:", options, NULL)) != -1) {
+    switch (c) {
+    case 'l':
+      proxy_set_string(&cfg->local_address, optarg);
+      break;
+    case 'r':
+      proxy_set_string(&cfg->remote_address, optarg);
+      break;
+    case 'o':
+      proxy_set_string(&cfg->logdir, optarg);
+      normalise_logdir(cfg->logdir);
+      break;
+    case 'p':
+      proxy_set_string(&cfg->pidfile_path, optarg);
+      break;
+    case 'O':
+      proxy_set_string(&cfg->observer_config, optarg);
+      break;
+    case 1000:
+      proxy_set_string(&cfg->config_path, optarg);
+      break;
+    default:
+      usage(argv[0]);
+      return -1;
+    }
+  }
+
+  if (!cfg->local_address || !cfg->remote_address || !cfg->logdir) {
+    usage(argv[0]);
+    return -1;
+  }
+  normalise_logdir(cfg->logdir);
+  return 0;
 }
 
 /*
@@ -490,70 +619,44 @@ void parseaddr(char *addrdesc, struct addrinfo **res) {
 
 int main(int argc, char *argv[]) {
   struct addrinfo *remote_address, *local_address;
-  int o;
-  char *remote_address_string = NULL;
-  char *local_address_string = NULL;
-  char *logdir = NULL;
-  char *pidfile_path = NULL;
-  char *observer_config_string = NULL;
   struct observer_global *observer_global = NULL;
-  FILE *pidfile = NULL;
+  struct proxy_config cfg;
+  memset(&cfg, 0, sizeof(cfg));
 
   log_set_context("main");
 
-  while ((o=getopt(argc, argv, "l:r:o:p:O:"))!=-1) {
-    switch (o) {
-    case 'l':
-      local_address_string = optarg;
-      break;
-    case 'r':
-      remote_address_string = optarg;
-      break;
-    case 'o':
-      logdir = optarg;
-      while (strlen(logdir) > 1 && logdir[strlen(logdir) -1] == '/') {
-	logdir[strlen(logdir) - 1] = '\0';
-      }
-      break;
-    case 'p':
-      pidfile_path = optarg;
-      break;
-    case 'O':
-      observer_config_string = optarg;
-      break;
-    default:
-      usage(argv[0]);
-      return -1;
-      break;
+  char *config_path = daemon_find_config_path(argc, argv);
+  if (config_path) {
+    cfg.config_path = config_path;
+    if (daemon_parse_config_file(cfg.config_path,
+                                 (daemon_kv_handler)apply_config_key,
+                                 &cfg,
+                                 (daemon_log_fn)config_log_message,
+                                 0,
+                                 "tcpproxy") != 0) {
+      /* continue even if the config file could not be parsed */
     }
   }
-  if (local_address_string == NULL || remote_address_string == NULL || logdir == NULL) {
-    usage(argv[0]);
+
+  if (parse_arguments(argc, argv, &cfg) != 0) {
+    free_proxy_config(&cfg);
     return -1;
   }
-  parseaddr(local_address_string, &local_address);
-  parseaddr(remote_address_string, &remote_address);
-  if (observer_global_init(observer_config_string, &observer_global) != 0) {
+
+  parseaddr(cfg.local_address, &local_address);
+  parseaddr(cfg.remote_address, &remote_address);
+  if (observer_global_init(cfg.observer_config, &observer_global) != 0) {
     fprintf(stderr, "Unable to initialize observer configuration.\n");
+    free_proxy_config(&cfg);
     return -1;
   }
-  if (pidfile_path) {
-    pidfile = fopen(pidfile_path, "w");
-    if (!pidfile) {
-      fprintf(stderr, "Unable to open pidfile %s: %s\n", pidfile_path, strerror(errno));
+  if (cfg.pidfile_path) {
+    if (daemon_pidfile_create(cfg.pidfile_path, NULL, 0, "tcpproxy") != 0) {
       observer_global_free(observer_global);
+      free_proxy_config(&cfg);
       return -1;
     }
-    fprintf(pidfile, "%ld\n", (long)getpid());
-    fclose(pidfile);
-    pidfile_path_global = strdup(pidfile_path);
-    if (!pidfile_path_global) {
-      fprintf(stderr, "Unable to allocate memory for pidfile path.\n");
-      observer_global_free(observer_global);
-      unlink(pidfile_path);
-      return -1;
-    }
-    atexit(cleanup_pidfile);
+    atexit(daemon_pidfile_cleanup);
     signal(SIGTERM, handle_exit_signal);
     signal(SIGINT, handle_exit_signal);
   }
@@ -561,21 +664,15 @@ int main(int argc, char *argv[]) {
 	   local_address->ai_addrlen,
 	   remote_address->ai_addr,
 	   remote_address->ai_addrlen,
-	   logdir,
+	   cfg.logdir,
 	   observer_global);
   observer_global_free(observer_global);
-  cleanup_pidfile();
-}
-static void cleanup_pidfile(void) {
-  if (pidfile_path_global) {
-    unlink(pidfile_path_global);
-    free(pidfile_path_global);
-    pidfile_path_global = NULL;
-  }
+  daemon_pidfile_cleanup();
+  free_proxy_config(&cfg);
 }
 
 static void handle_exit_signal(int signo) {
   (void)signo;
-  cleanup_pidfile();
+  daemon_pidfile_cleanup();
   _exit(0);
 }

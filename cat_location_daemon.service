@@ -13,7 +13,11 @@ ExecStart=/usr/local/libexec/tcpproxy/cat_location_daemon \
   --output-uri=amqp://guest:guest@127.0.0.1:5672/%2F \
   --output-exchange=cat.location \
   --output-routing-key=cat.position \
-  --kml=/usr/local/etc/Locations.kml
+  --kml=/usr/local/etc/Locations.kml \
+  --pidfile=/run/cat_location_daemon/cat_location_daemon.pid
+PIDFile=/run/cat_location_daemon/cat_location_daemon.pid
+RuntimeDirectory=cat_location_daemon
+RuntimeDirectoryMode=0755
 Restart=on-failure
 
 [Install]
