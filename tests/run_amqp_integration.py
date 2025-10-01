@@ -93,7 +93,7 @@ def run(command, *, verbose=False, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
-def wait_for_rabbitmq(uri: str, timeout: float = 20.0) -> None:
+def wait_for_rabbitmq(uri: str, timeout: float = 50.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         clean_uri, _ = sanitize_uri(uri)
