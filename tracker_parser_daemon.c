@@ -2,6 +2,9 @@
 #include <amqp_framing.h>
 #include <amqp_tcp_socket.h>
 
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -52,6 +55,35 @@ enum {
 
 static volatile sig_atomic_t g_stop = 0;
 
+static const char *TK_PATTERN =
+    "^\\[([A-Z0-9]*)\\*(?P<device>[0-9]+)\\*[0-9A-Fa-f]+\\*UD[^,]*,"
+    "(?P<day>..)(?P<month>..)(?P<year>..),"
+    "(?P<hour>..)(?P<minute>..)(?P<second>..),"
+    "(?P<status>[AV]),"
+    "(?P<lat>[-0-9.]*),(?P<ns>[NS]),"
+    "(?P<lon>[-0-9.]*),(?P<ew>[EW]),"
+    "(?P<speed>[.0-9]*),(?P<direction>[-.0-9]*),(?P<tkunk01>[^,]*),"
+    "(?P<nsats>[0-9]*),(?P<tkunk02>[^,]*),"
+    "(?P<bat>[.0-9]*),(?P<tkunk03>[^,]*),(?P<tkunk04>[^,]*),(?P<tkunk05>[^,]*),"
+    "(?P<ntowers>[0-9]*),(?P<mnc>[0-9]*),(?P<mcc>[0-9]*),(?P<tkunk06>[0-9]*)"
+    "(?P<celltowers>.*),,00\\]$";
+
+static const char *FA_PATTERN =
+    "^\\[([A-Z0-9]*)\\*(?P<device>[0-9]+)\\*[0-9A-Fa-f]+\\*UD[^,]*,"
+    "(?P<day>..)(?P<month>..)(?P<year>..),"
+    "(?P<hour>..)(?P<minute>..)(?P<second>..),"
+    "(?P<status>[AV]),"
+    "(?P<lat>[-0-9.]*),(?P<ns>[NS]),"
+    "(?P<lon>[-0-9.]*),(?P<ew>[EW]),"
+    "(?P<speed>[.0-9]*),(?P<direction>[-.0-9]*),(?P<faunk01>[^,]*),"
+    "(?P<nsats>[0-9]*),(?P<faunk02>[^,]*),"
+    "(?P<bat>[.0-9]*),"
+    "(?P<faunk03>[^,]*),(?P<faunk04>[^,]*),(?P<faunk05>[^,]*),"
+    "(?P<faunk06>[^,]*),(?P<faunk07>[^,]*),(?P<faunk08>[^,]*).*\\]$";
+
+static pcre2_code *g_tk_regex = NULL;
+static pcre2_code *g_fa_regex = NULL;
+
 static void log_message(int level, int configured_level, const char *fmt, ...) {
   if (level > configured_level) {
     return;
@@ -81,6 +113,79 @@ static void log_message(int level, int configured_level, const char *fmt, ...) {
 static void signal_handler(int sig) {
   (void)sig;
   g_stop = 1;
+}
+
+static pcre2_code *compile_regex(const char *pattern, const char *name, int log_level) {
+  int errornumber = 0;
+  PCRE2_SIZE erroffset = 0;
+  uint32_t options = PCRE2_UTF | PCRE2_UCP;
+  pcre2_code *code = pcre2_compile((PCRE2_SPTR)pattern,
+                                   PCRE2_ZERO_TERMINATED,
+                                   options,
+                                   &errornumber,
+                                   &erroffset,
+                                   NULL);
+  if (!code) {
+    PCRE2_UCHAR buffer[256];
+    pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
+    log_message(LOG_ERROR,
+                log_level,
+                "Failed to compile %s pattern at offset %zu: %s",
+                name,
+                (size_t)erroffset,
+                buffer);
+  }
+  return code;
+}
+
+static void free_regexes(void) {
+  if (g_tk_regex) {
+    pcre2_code_free(g_tk_regex);
+    g_tk_regex = NULL;
+  }
+  if (g_fa_regex) {
+    pcre2_code_free(g_fa_regex);
+    g_fa_regex = NULL;
+  }
+}
+
+static int get_substring_byname(pcre2_match_data *match_data,
+                                const char *name,
+                                char *out,
+                                size_t out_size) {
+  if (!out || out_size == 0) {
+    return -1;
+  }
+  PCRE2_UCHAR *substring = NULL;
+  PCRE2_SIZE length = 0;
+  int rc = pcre2_substring_get_byname(match_data,
+                                      (PCRE2_SPTR)name,
+                                      &substring,
+                                      &length);
+  if (rc != 0) {
+    out[0] = '\0';
+    return -1;
+  }
+  size_t copy_len = (length < out_size - 1) ? (size_t)length : out_size - 1;
+  memcpy(out, substring, copy_len);
+  out[copy_len] = '\0';
+  pcre2_substring_free(substring);
+  if (length >= out_size) {
+    return -1;
+  }
+  return 0;
+}
+
+static double parse_double_field(const char *value) {
+  if (!value || !*value) {
+    return 0.0;
+  }
+  char *endptr = NULL;
+  double result = strtod(value, &endptr);
+  if (endptr == value) {
+    return 0.0;
+  }
+  return result;
 }
 
 static int hex_value(char c) {
@@ -459,6 +564,112 @@ static int json_extract_optional_string(const char *json,
   return -1;
 }
 
+static int parse_with_regex(pcre2_code *code,
+                            const char *payload,
+                            char *tracker_id,
+                            size_t tracker_id_size,
+                            char *date_out,
+                            size_t date_size,
+                            char *time_out,
+                            size_t time_size,
+                            char *status_out,
+                            double *lat_out,
+                            double *lon_out,
+                            double *speed_out,
+                            double *direction_out,
+                            double *battery_out) {
+  if (!code) {
+    return -1;
+  }
+
+  pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(code, NULL);
+  if (!match_data) {
+    return -1;
+  }
+
+  int rc = pcre2_match(code,
+                        (PCRE2_SPTR)payload,
+                        (PCRE2_SIZE)strlen(payload),
+                        0,
+                        0,
+                        match_data,
+                        NULL);
+  if (rc < 0) {
+    pcre2_match_data_free(match_data);
+    return -1;
+  }
+
+  char device_buf[128];
+  char day_buf[8];
+  char month_buf[8];
+  char year_buf[8];
+  char hour_buf[8];
+  char minute_buf[8];
+  char second_buf[8];
+  char status_buf[8];
+  char lat_buf[32];
+  char ns_buf[4];
+  char lon_buf[32];
+  char ew_buf[4];
+  char speed_buf[32];
+  char direction_buf[32];
+  char battery_buf[32];
+
+  if (get_substring_byname(match_data, "device", device_buf, sizeof(device_buf)) != 0 ||
+      get_substring_byname(match_data, "day", day_buf, sizeof(day_buf)) != 0 ||
+      get_substring_byname(match_data, "month", month_buf, sizeof(month_buf)) != 0 ||
+      get_substring_byname(match_data, "year", year_buf, sizeof(year_buf)) != 0 ||
+      get_substring_byname(match_data, "hour", hour_buf, sizeof(hour_buf)) != 0 ||
+      get_substring_byname(match_data, "minute", minute_buf, sizeof(minute_buf)) != 0 ||
+      get_substring_byname(match_data, "second", second_buf, sizeof(second_buf)) != 0 ||
+      get_substring_byname(match_data, "status", status_buf, sizeof(status_buf)) != 0 ||
+      get_substring_byname(match_data, "lat", lat_buf, sizeof(lat_buf)) != 0 ||
+      get_substring_byname(match_data, "ns", ns_buf, sizeof(ns_buf)) != 0 ||
+      get_substring_byname(match_data, "lon", lon_buf, sizeof(lon_buf)) != 0 ||
+      get_substring_byname(match_data, "ew", ew_buf, sizeof(ew_buf)) != 0 ||
+      get_substring_byname(match_data, "speed", speed_buf, sizeof(speed_buf)) != 0 ||
+      get_substring_byname(match_data, "direction", direction_buf, sizeof(direction_buf)) != 0 ||
+      get_substring_byname(match_data, "bat", battery_buf, sizeof(battery_buf)) != 0) {
+    pcre2_match_data_free(match_data);
+    return -1;
+  }
+
+  if (strlen(device_buf) >= tracker_id_size) {
+    pcre2_match_data_free(match_data);
+    return -1;
+  }
+  strcpy(tracker_id, device_buf);
+
+  int year_val = atoi(year_buf);
+  year_val += (year_val >= 90) ? 1900 : 2000;
+  snprintf(date_out, date_size, "%04d-%s-%s", year_val, month_buf, day_buf);
+  snprintf(time_out, time_size, "%s:%s:%s", hour_buf, minute_buf, second_buf);
+
+  char status_char = (status_buf[0] != '\0') ? status_buf[0] : 'V';
+  *status_out = status_char;
+
+  double latitude = parse_double_field(lat_buf);
+  if (ns_buf[0] == 'S' || ns_buf[0] == 's') {
+    latitude = -latitude;
+  }
+  double longitude = parse_double_field(lon_buf);
+  if (ew_buf[0] == 'W' || ew_buf[0] == 'w') {
+    longitude = -longitude;
+  }
+  double speed = parse_double_field(speed_buf);
+  double direction_val = parse_double_field(direction_buf);
+  double battery = parse_double_field(battery_buf);
+
+  *lat_out = latitude;
+  *lon_out = longitude;
+  *speed_out = speed;
+  *direction_out = direction_val;
+  *battery_out = battery;
+
+  pcre2_match_data_free(match_data);
+  return 0;
+}
+
 static int parse_tracker_payload(const char *payload,
                                  char *tracker_id,
                                  size_t tracker_id_size,
@@ -472,119 +683,39 @@ static int parse_tracker_payload(const char *payload,
                                  double *speed_out,
                                  double *direction_out,
                                  double *battery_out) {
-  size_t len = strlen(payload);
-  if (len < 4 || payload[0] != '[' || payload[len - 1] != ']') {
-    return -1;
+  if (parse_with_regex(g_tk_regex,
+                       payload,
+                       tracker_id,
+                       tracker_id_size,
+                       date_out,
+                       date_size,
+                       time_out,
+                       time_size,
+                       status_out,
+                       lat_out,
+                       lon_out,
+                       speed_out,
+                       direction_out,
+                       battery_out) == 0) {
+    return 0;
   }
-  char *copy = (char *)malloc(len + 1);
-  if (!copy) {
-    return -1;
+  if (parse_with_regex(g_fa_regex,
+                       payload,
+                       tracker_id,
+                       tracker_id_size,
+                       date_out,
+                       date_size,
+                       time_out,
+                       time_size,
+                       status_out,
+                       lat_out,
+                       lon_out,
+                       speed_out,
+                       direction_out,
+                       battery_out) == 0) {
+    return 0;
   }
-  memcpy(copy, payload + 1, len - 2);
-  copy[len - 2] = '\0';
-
-  char *comma = strchr(copy, ',');
-  if (!comma) {
-    free(copy);
-    return -1;
-  }
-  *comma = '\0';
-  char *body = comma + 1;
-
-  /* Header looks like SG*1234567890*XXXX*UD... */
-  char *saveptr = NULL;
-  char *token = strtok_r(copy, "*", &saveptr);
-  int header_index = 0;
-  int success = 0;
-  while (token) {
-    if (header_index == 1) {
-      if (strlen(token) >= tracker_id_size) {
-        break;
-      }
-      strcpy(tracker_id, token);
-      success = 1;
-      break;
-    }
-    token = strtok_r(NULL, "*", &saveptr);
-    header_index++;
-  }
-  if (!success) {
-    free(copy);
-    return -1;
-  }
-
-  char *fields[32] = {0};
-  int field_count = 0;
-  saveptr = NULL;
-  token = strtok_r(body, ",", &saveptr);
-  while (token && field_count < (int)(sizeof(fields) / sizeof(fields[0]))) {
-    fields[field_count++] = token;
-    token = strtok_r(NULL, ",", &saveptr);
-  }
-  if (field_count < 13) {
-    free(copy);
-    return -1;
-  }
-
-  if (strlen(fields[0]) != 6 || strlen(fields[1]) != 6) {
-    free(copy);
-    return -1;
-  }
-  char day[3] = {fields[0][0], fields[0][1], '\0'};
-  char month[3] = {fields[0][2], fields[0][3], '\0'};
-  char year[3] = {fields[0][4], fields[0][5], '\0'};
-  int year_val = atoi(year);
-  year_val += (year_val >= 90) ? 1900 : 2000;
-  snprintf(date_out, date_size, "%04d-%s-%s", year_val, month, day);
-
-  char hour[3] = {fields[1][0], fields[1][1], '\0'};
-  char minute[3] = {fields[1][2], fields[1][3], '\0'};
-  char second[3] = {fields[1][4], fields[1][5], '\0'};
-  snprintf(time_out, time_size, "%s:%s:%s", hour, minute, second);
-
-  if (fields[2] && fields[2][0]) {
-    *status_out = fields[2][0];
-  } else {
-    *status_out = 'V';
-  }
-
-  if (!fields[3] || !fields[4] || !fields[5] || !fields[6]) {
-    free(copy);
-    return -1;
-  }
-
-  char *endptr = NULL;
-  double lat = strtod(fields[3], &endptr);
-  if (endptr == fields[3]) {
-    free(copy);
-    return -1;
-  }
-  if (fields[4][0] == 'S' || fields[4][0] == 's') {
-    lat = -lat;
-  }
-  double lon = strtod(fields[5], &endptr);
-  if (endptr == fields[5]) {
-    free(copy);
-    return -1;
-  }
-  if (fields[6][0] == 'W' || fields[6][0] == 'w') {
-    lon = -lon;
-  }
-  double speed = strtod(fields[7] ? fields[7] : "0", NULL);
-  double direction = strtod(fields[8] ? fields[8] : "0", NULL);
-  double battery = 0.0;
-  if (field_count > 12 && fields[12]) {
-    battery = strtod(fields[12], NULL);
-  }
-
-  *lat_out = lat;
-  *lon_out = lon;
-  *speed_out = speed;
-  *direction_out = direction;
-  *battery_out = battery;
-
-  free(copy);
-  return 0;
+  return -1;
 }
 
 static char *build_output_json(const char *tracker_id,
@@ -947,6 +1078,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  g_tk_regex = compile_regex(TK_PATTERN, "TK", cfg.log_level);
+  if (!g_tk_regex) {
+    free_config(&cfg);
+    return 1;
+  }
+  g_fa_regex = compile_regex(FA_PATTERN, "FA", cfg.log_level);
+  if (!g_fa_regex) {
+    free_regexes();
+    free_config(&cfg);
+    return 1;
+  }
+
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
@@ -954,23 +1097,27 @@ int main(int argc, char **argv) {
   struct uri_parts output_uri_parts;
   if (parse_amqp_uri(cfg.input_uri, &input_uri_parts) != 0) {
     log_message(LOG_ERROR, cfg.log_level, "Invalid input AMQP URI: %s", cfg.input_uri);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
   if (parse_amqp_uri(cfg.output_uri, &output_uri_parts) != 0) {
     log_message(LOG_ERROR, cfg.log_level, "Invalid output AMQP URI: %s", cfg.output_uri);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
 
   amqp_connection_state_t input_conn = open_connection(&input_uri_parts, cfg.log_level);
   if (!input_conn) {
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
   amqp_connection_state_t output_conn = open_connection(&output_uri_parts, cfg.log_level);
   if (!output_conn) {
     close_connection(input_conn, 1);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
@@ -982,6 +1129,7 @@ int main(int argc, char **argv) {
       open_channel(output_conn, OUTPUT_CHANNEL, cfg.log_level) != 0) {
     close_connection(input_conn, INPUT_CHANNEL);
     close_connection(output_conn, OUTPUT_CHANNEL);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
@@ -994,6 +1142,7 @@ int main(int argc, char **argv) {
                     cfg.log_level) != 0) {
     close_connection(input_conn, INPUT_CHANNEL);
     close_connection(output_conn, OUTPUT_CHANNEL);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
@@ -1005,6 +1154,7 @@ int main(int argc, char **argv) {
                      cfg.log_level) != 0) {
     close_connection(input_conn, INPUT_CHANNEL);
     close_connection(output_conn, OUTPUT_CHANNEL);
+    free_regexes();
     free_config(&cfg);
     return 1;
   }
@@ -1056,6 +1206,7 @@ int main(int argc, char **argv) {
 
   close_connection(input_conn, INPUT_CHANNEL);
   close_connection(output_conn, OUTPUT_CHANNEL);
+  free_regexes();
   free_config(&cfg);
   return 0;
 }

@@ -14,6 +14,13 @@ if(NOT RABBITMQ_INCLUDE_DIR OR NOT RABBITMQ_LIBRARY)
   message(FATAL_ERROR "librabbitmq not found - please install rabbitmq-c development files")
 endif()
 
+find_path(PCRE2_INCLUDE_DIR pcre2.h)
+find_library(PCRE2_LIBRARY pcre2-8)
+
+if(NOT PCRE2_INCLUDE_DIR OR NOT PCRE2_LIBRARY)
+  message(FATAL_ERROR "PCRE2 (8-bit) not found - please install libpcre2-8 development files")
+endif()
+
 add_executable(tcpproxy
   tcpproxy.c
   observer.c
@@ -28,9 +35,9 @@ target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")
 target_compile_definitions(tcpproxy PRIVATE DEFAULT_AMQP_HELPER_PATH="${CMAKE_INSTALL_FULL_LIBEXECDIR}/tcpproxy/observer_amqp_publisher.py")
 
 target_include_directories(tcpproxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(tracker_parser_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR})
+target_include_directories(tracker_parser_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${PCRE2_INCLUDE_DIR})
 
-target_link_libraries(tracker_parser_daemon PRIVATE ${RABBITMQ_LIBRARY})
+target_link_libraries(tracker_parser_daemon PRIVATE ${RABBITMQ_LIBRARY} ${PCRE2_LIBRARY})
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(tcpproxy PRIVATE -Wall)
