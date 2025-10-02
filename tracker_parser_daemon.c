@@ -172,6 +172,47 @@ static int get_substring_byname(pcre2_match_data *match_data,
   return 0;
 }
 
+static char *match_strdup_byname(pcre2_match_data *match_data, const char *name) {
+  PCRE2_UCHAR *substring = NULL;
+  PCRE2_SIZE length = 0;
+  int rc = pcre2_substring_get_byname(match_data,
+                                      (PCRE2_SPTR)name,
+                                      &substring,
+                                      &length);
+  if (rc != 0) {
+    return NULL;
+  }
+  char *result = (char *)malloc(length + 1);
+  if (!result) {
+    pcre2_substring_free(substring);
+    return NULL;
+  }
+  memcpy(result, substring, length);
+  result[length] = '\0';
+  pcre2_substring_free(substring);
+  return result;
+}
+
+static void json_object_set_string_field(json_t *obj, const char *key, const char *value) {
+  if (!obj || !key || !value || value[0] == '\0') {
+    return;
+  }
+  json_object_set_new(obj, key, json_string(value));
+}
+
+static void json_object_set_number_or_string(json_t *obj, const char *key, const char *value) {
+  if (!obj || !key || !value || value[0] == '\0') {
+    return;
+  }
+  char *endptr = NULL;
+  long parsed = strtol(value, &endptr, 10);
+  if (endptr && *endptr == '\0') {
+    json_object_set_new(obj, key, json_integer(parsed));
+  } else {
+    json_object_set_new(obj, key, json_string(value));
+  }
+}
+
 static double parse_double_field(const char *value) {
   if (!value || !*value) {
     return 0.0;
@@ -316,7 +357,9 @@ static int parse_with_regex(pcre2_code *code,
                             double *lon_out,
                             double *speed_out,
                             double *direction_out,
-                            double *battery_out) {
+                            double *battery_out,
+                            json_t *details,
+                            const char *pattern_name) {
   if (!code) {
     return -1;
   }
@@ -353,6 +396,7 @@ static int parse_with_regex(pcre2_code *code,
   char speed_buf[32];
   char direction_buf[32];
   char battery_buf[32];
+  char nsats_buf[16];
 
   if (get_substring_byname(match_data, "device", device_buf, sizeof(device_buf)) != 0 ||
       get_substring_byname(match_data, "day", day_buf, sizeof(day_buf)) != 0 ||
@@ -368,7 +412,8 @@ static int parse_with_regex(pcre2_code *code,
       get_substring_byname(match_data, "ew", ew_buf, sizeof(ew_buf)) != 0 ||
       get_substring_byname(match_data, "speed", speed_buf, sizeof(speed_buf)) != 0 ||
       get_substring_byname(match_data, "direction", direction_buf, sizeof(direction_buf)) != 0 ||
-      get_substring_byname(match_data, "bat", battery_buf, sizeof(battery_buf)) != 0) {
+      get_substring_byname(match_data, "bat", battery_buf, sizeof(battery_buf)) != 0 ||
+      get_substring_byname(match_data, "nsats", nsats_buf, sizeof(nsats_buf)) != 0) {
     pcre2_match_data_free(match_data);
     return -1;
   }
@@ -405,6 +450,43 @@ static int parse_with_regex(pcre2_code *code,
   *direction_out = direction_val;
   *battery_out = battery;
 
+  if (details) {
+    json_object_set_string_field(details, "ns", ns_buf);
+    json_object_set_string_field(details, "ew", ew_buf);
+    json_object_set_number_or_string(details, "nsats", nsats_buf);
+
+    if (pattern_name && strcmp(pattern_name, "tk") == 0) {
+      const char *tk_string_fields[] = {
+          "tkunk01", "tkunk02", "tkunk03", "tkunk04", "tkunk05", "tkunk06", "celltowers"};
+      const char *tk_numeric_fields[] = {"ntowers", "mnc", "mcc"};
+
+      for (size_t i = 0; i < sizeof(tk_numeric_fields) / sizeof(tk_numeric_fields[0]); i++) {
+        char *value = match_strdup_byname(match_data, tk_numeric_fields[i]);
+        if (value) {
+          json_object_set_number_or_string(details, tk_numeric_fields[i], value);
+          free(value);
+        }
+      }
+      for (size_t i = 0; i < sizeof(tk_string_fields) / sizeof(tk_string_fields[0]); i++) {
+        char *value = match_strdup_byname(match_data, tk_string_fields[i]);
+        if (value) {
+          json_object_set_string_field(details, tk_string_fields[i], value);
+          free(value);
+        }
+      }
+    } else if (pattern_name && strcmp(pattern_name, "fa") == 0) {
+      const char *fa_string_fields[] = {
+          "faunk01", "faunk02", "faunk03", "faunk04", "faunk05", "faunk06", "faunk07", "faunk08"};
+      for (size_t i = 0; i < sizeof(fa_string_fields) / sizeof(fa_string_fields[0]); i++) {
+        char *value = match_strdup_byname(match_data, fa_string_fields[i]);
+        if (value) {
+          json_object_set_string_field(details, fa_string_fields[i], value);
+          free(value);
+        }
+      }
+    }
+  }
+
   pcre2_match_data_free(match_data);
   return 0;
 }
@@ -421,7 +503,18 @@ static int parse_tracker_payload(const char *payload,
                                  double *lon_out,
                                  double *speed_out,
                                  double *direction_out,
-                                 double *battery_out) {
+                                 double *battery_out,
+                                 json_t **details_out) {
+  if (!details_out) {
+    return -1;
+  }
+  *details_out = NULL;
+
+  json_t *details = json_object();
+  if (!details) {
+    return -1;
+  }
+
   if (parse_with_regex(g_tk_regex,
                        payload,
                        tracker_id,
@@ -435,9 +528,19 @@ static int parse_tracker_payload(const char *payload,
                        lon_out,
                        speed_out,
                        direction_out,
-                       battery_out) == 0) {
+                       battery_out,
+                       details,
+                       "tk") == 0) {
+    *details_out = details;
     return 0;
   }
+  json_decref(details);
+
+  details = json_object();
+  if (!details) {
+    return -1;
+  }
+
   if (parse_with_regex(g_fa_regex,
                        payload,
                        tracker_id,
@@ -451,9 +554,13 @@ static int parse_tracker_payload(const char *payload,
                        lon_out,
                        speed_out,
                        direction_out,
-                       battery_out) == 0) {
+                       battery_out,
+                       details,
+                       "fa") == 0) {
+    *details_out = details;
     return 0;
   }
+  json_decref(details);
   return -1;
 }
 
@@ -466,7 +573,8 @@ static char *build_output_json(const char *tracker_id,
                                double speed,
                                double direction,
                                double battery,
-                               const char *timestamp) {
+                               const char *timestamp,
+                               json_t *extra_fields) {
   json_t *root = json_object();
   if (!root) {
     return NULL;
@@ -490,6 +598,14 @@ static char *build_output_json(const char *tracker_id,
     if (json_object_set_new(root, "timestamp", json_string(timestamp)) != 0) {
       json_decref(root);
       return NULL;
+    }
+  }
+
+  if (extra_fields) {
+    const char *key;
+    json_t *value;
+    json_object_foreach(extra_fields, key, value) {
+      json_object_set(root, key, value);
     }
   }
 
@@ -577,6 +693,7 @@ static int process_message(const char *json,
   double speed = 0.0;
   double direction_val = 0.0;
   double battery = 0.0;
+  json_t *extra_fields = NULL;
   if (parse_tracker_payload(payload,
                              tracker_id,
                              sizeof(tracker_id),
@@ -589,7 +706,8 @@ static int process_message(const char *json,
                              &longitude,
                              &speed,
                              &direction_val,
-                             &battery) != 0) {
+                             &battery,
+                             &extra_fields) != 0) {
     log_message(LOG_DEBUG, log_level, "Failed to parse tracker payload: %s", payload);
     return 0;
   }
@@ -609,7 +727,12 @@ static int process_message(const char *json,
                                      speed,
                                      direction_val,
                                      battery,
-                                     timestamp);
+                                     timestamp,
+                                     extra_fields);
+  if (extra_fields) {
+    json_decref(extra_fields);
+    extra_fields = NULL;
+  }
   if (!out_json) {
     json_decref(root);
     return -1;
