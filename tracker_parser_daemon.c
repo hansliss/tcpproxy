@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
+#include <jansson.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -28,9 +29,6 @@
  */
 
 #define MAX_URI_PART 256
-#define MAX_JSON_VALUE 8192
-
-
 struct daemon_config {
   char *input_uri;
   char *input_queue;
@@ -186,19 +184,6 @@ static double parse_double_field(const char *value) {
   return result;
 }
 
-static int hex_value(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return 10 + (c - 'a');
-  }
-  if (c >= 'A' && c <= 'F') {
-    return 10 + (c - 'A');
-  }
-  return -1;
-}
-
 static int parse_log_level(const char *level);
 
 static void set_string(char **dest, const char *value) {
@@ -316,90 +301,6 @@ static amqp_connection_state_t connect_output(struct daemon_config *cfg,
                           1,
                           1,
                           (daemon_log_fn)log_message);
-}
-
-static int json_extract_string(const char *json,
-                               const char *key,
-                               char *out,
-                               size_t out_size) {
-  char needle[64];
-  snprintf(needle, sizeof(needle), "\"%s\":", key);
-  const char *start = strstr(json, needle);
-  if (!start) {
-    return -1;
-  }
-  start += strlen(needle);
-  while (*start == ' ' || *start == '\t') {
-    ++start;
-  }
-  if (*start != '"') {
-    return -1;
-  }
-  ++start;
-  const char *cur = start;
-  char tmp[MAX_JSON_VALUE];
-  size_t ti = 0;
-  while (*cur && ti + 1 < sizeof(tmp)) {
-    if (*cur == '\\') {
-      ++cur;
-      if (*cur == '\0') {
-        break;
-      }
-      char translated = *cur;
-      switch (*cur) {
-      case 'b': translated = '\b'; break;
-      case 'f': translated = '\f'; break;
-      case 'n': translated = '\n'; break;
-      case 'r': translated = '\r'; break;
-      case 't': translated = '\t'; break;
-      case '\\': translated = '\\'; break;
-      case '"': translated = '"'; break;
-      case 'u':
-        if (isxdigit((unsigned char)cur[1]) && isxdigit((unsigned char)cur[2]) &&
-            isxdigit((unsigned char)cur[3]) && isxdigit((unsigned char)cur[4])) {
-          int h1 = hex_value(cur[1]);
-          int h2 = hex_value(cur[2]);
-          int h3 = hex_value(cur[3]);
-          int h4 = hex_value(cur[4]);
-          int codepoint = (h1 << 12) | (h2 << 8) | (h3 << 4) | h4;
-          if (codepoint < 128) {
-            translated = (char)codepoint;
-            cur += 4;
-          } else {
-            translated = '?';
-            cur += 4;
-          }
-        }
-        break;
-      default:
-        break;
-      }
-      tmp[ti++] = translated;
-      ++cur;
-      continue;
-    }
-    if (*cur == '"') {
-      break;
-    }
-    tmp[ti++] = *cur++;
-  }
-  tmp[ti] = '\0';
-  if (ti >= out_size) {
-    return -1;
-  }
-  memcpy(out, tmp, ti + 1);
-  return 0;
-}
-
-static int json_extract_optional_string(const char *json,
-                                        const char *key,
-                                        char *out,
-                                        size_t out_size) {
-  if (json_extract_string(json, key, out, out_size) == 0) {
-    return 0;
-  }
-  out[0] = '\0';
-  return -1;
 }
 
 static int parse_with_regex(pcre2_code *code,
@@ -566,42 +467,35 @@ static char *build_output_json(const char *tracker_id,
                                double direction,
                                double battery,
                                const char *timestamp) {
-  const char *ts = (timestamp && *timestamp) ? timestamp : NULL;
-  size_t extra = ts ? strlen(ts) + 25 : 0;
-  size_t size = 256 + extra;
-  char *out = (char *)malloc(size);
-  if (!out) {
+  json_t *root = json_object();
+  if (!root) {
     return NULL;
   }
-  if (ts) {
-    snprintf(out,
-             size,
-             "{\"tracker_id\":\"%s\",\"date\":\"%s\",\"time\":\"%s\",\"status\":\"%c\",\"latitude\":%.6f,\"longitude\":%.6f,\"speed\":%.3f,\"direction\":%.3f,\"battery\":%.2f,\"timestamp\":\"%s\"}",
-             tracker_id,
-             date,
-             time,
-             status,
-             lat,
-             lon,
-             speed,
-             direction,
-             battery,
-             ts);
-  } else {
-    snprintf(out,
-             size,
-             "{\"tracker_id\":\"%s\",\"date\":\"%s\",\"time\":\"%s\",\"status\":\"%c\",\"latitude\":%.6f,\"longitude\":%.6f,\"speed\":%.3f,\"direction\":%.3f,\"battery\":%.2f}",
-             tracker_id,
-             date,
-             time,
-             status,
-             lat,
-             lon,
-             speed,
-             direction,
-             battery);
+
+  char status_buf[2] = {status, '\0'};
+  if (json_object_set_new(root, "tracker_id", json_string(tracker_id)) != 0 ||
+      json_object_set_new(root, "date", json_string(date)) != 0 ||
+      json_object_set_new(root, "time", json_string(time)) != 0 ||
+      json_object_set_new(root, "status", json_string(status_buf)) != 0 ||
+      json_object_set_new(root, "latitude", json_real(lat)) != 0 ||
+      json_object_set_new(root, "longitude", json_real(lon)) != 0 ||
+      json_object_set_new(root, "speed", json_real(speed)) != 0 ||
+      json_object_set_new(root, "direction", json_real(direction)) != 0 ||
+      json_object_set_new(root, "battery", json_real(battery)) != 0) {
+    json_decref(root);
+    return NULL;
   }
-  return out;
+
+  if (timestamp && *timestamp) {
+    if (json_object_set_new(root, "timestamp", json_string(timestamp)) != 0) {
+      json_decref(root);
+      return NULL;
+    }
+  }
+
+  char *serialized = json_dumps(root, JSON_COMPACT);
+  json_decref(root);
+  return serialized;
 }
 
 static int publish_event(amqp_connection_state_t conn,
@@ -635,16 +529,42 @@ static int process_message(const char *json,
                            const char *output_exchange,
                            const char *output_routing_key,
                            int log_level) {
-  char direction[64];
-  if (json_extract_optional_string(json, "direction", direction, sizeof(direction)) == 0) {
-    if (strcmp(direction, "client") != 0) {
-      return 0; /* Nothing to do, ack. */
-    }
+  json_error_t error;
+  json_t *root = json_loads(json, 0, &error);
+  if (!root) {
+    log_message(LOG_WARN,
+                log_level,
+                "Invalid JSON (%s at line %d column %d)",
+                error.text,
+                error.line,
+                error.column);
+    return 0;
+  }
+  if (!json_is_object(root)) {
+    log_message(LOG_WARN, log_level, "JSON message is not an object");
+    json_decref(root);
+    return 0;
   }
 
-  char payload[MAX_JSON_VALUE];
-  if (json_extract_string(json, "payload", payload, sizeof(payload)) != 0) {
-    log_message(LOG_WARN, log_level, "Message missing payload field (%0.120s)", json);
+  const char *direction = NULL;
+  json_t *direction_json = json_object_get(root, "direction");
+  if (direction_json && json_is_string(direction_json)) {
+    direction = json_string_value(direction_json);
+  }
+  if (direction && strcmp(direction, "client") != 0) {
+    json_decref(root);
+    return 0;
+  }
+
+  json_t *payload_val = json_object_get(root, "payload");
+  if (!payload_val || !json_is_string(payload_val)) {
+    log_message(LOG_WARN, log_level, "Message missing payload string field");
+    json_decref(root);
+    return 0;
+  }
+  const char *payload = json_string_value(payload_val);
+  if (!payload) {
+    json_decref(root);
     return 0;
   }
 
@@ -674,8 +594,11 @@ static int process_message(const char *json,
     return 0;
   }
 
-  char timestamp[64];
-  json_extract_optional_string(json, "timestamp", timestamp, sizeof(timestamp));
+  const char *timestamp = NULL;
+  json_t *timestamp_val = json_object_get(root, "timestamp");
+  if (timestamp_val && json_is_string(timestamp_val)) {
+    timestamp = json_string_value(timestamp_val);
+  }
 
   char *out_json = build_output_json(tracker_id,
                                      date_buf,
@@ -688,6 +611,7 @@ static int process_message(const char *json,
                                      battery,
                                      timestamp);
   if (!out_json) {
+    json_decref(root);
     return -1;
   }
 
@@ -702,6 +626,7 @@ static int process_message(const char *json,
     log_message(LOG_DEBUG, log_level, "Published %s", out_json);
   }
   free(out_json);
+  json_decref(root);
   if (rc != 0) {
     return -1;
   }

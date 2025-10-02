@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
+#include <jansson.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <signal.h>
@@ -27,6 +28,16 @@ struct location {
 
 struct location_resolver {
   struct location *entries;
+  size_t count;
+};
+
+struct tracker_position_entry {
+  char *tracker_id;
+  char *position;
+};
+
+struct tracker_positions {
+  struct tracker_position_entry *entries;
   size_t count;
 };
 
@@ -263,125 +274,62 @@ static const char *location_resolver_resolve(struct location_resolver *resolver,
   return resolver->entries[best_index].name;
 }
 
-static int hex_value_json(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
+static void tracker_positions_free(struct tracker_positions *positions) {
+  if (!positions) {
+    return;
   }
-  if (c >= 'a' && c <= 'f') {
-    return 10 + (c - 'a');
+  for (size_t i = 0; i < positions->count; i++) {
+    free(positions->entries[i].tracker_id);
+    free(positions->entries[i].position);
   }
-  if (c >= 'A' && c <= 'F') {
-    return 10 + (c - 'A');
-  }
-  return -1;
+  free(positions->entries);
+  positions->entries = NULL;
+  positions->count = 0;
 }
 
-static int json_extract_string(const char *json, const char *key, char *out, size_t out_size) {
-  char needle[64];
-  snprintf(needle, sizeof(needle), "\"%s\":", key);
-  const char *start = strstr(json, needle);
-  if (!start) {
-    return -1;
+static const char *tracker_positions_get(struct tracker_positions *positions, const char *tracker_id) {
+  if (!positions || !tracker_id) {
+    return NULL;
   }
-  start += strlen(needle);
-  while (*start == ' ' || *start == '\t') {
-    start++;
-  }
-  if (*start != '"') {
-    return -1;
-  }
-  start++;
-  const char *cur = start;
-  char *ptr = out;
-  size_t remaining = out_size;
-  if (remaining == 0) {
-    return -1;
-  }
-  remaining--;
-  while (*cur && remaining > 0) {
-    if (*cur == '\\') {
-      cur++;
-      if (!*cur) {
-        break;
-      }
-      char translated = *cur;
-      switch (*cur) {
-      case 'b': translated = '\b'; break;
-      case 'f': translated = '\f'; break;
-      case 'n': translated = '\n'; break;
-      case 'r': translated = '\r'; break;
-      case 't': translated = '\t'; break;
-      case '"': translated = '"'; break;
-      case '\\': translated = '\\'; break;
-      case 'u': {
-        if (isxdigit((unsigned char)cur[1]) && isxdigit((unsigned char)cur[2]) &&
-            isxdigit((unsigned char)cur[3]) && isxdigit((unsigned char)cur[4])) {
-          int h1 = hex_value_json(cur[1]);
-          int h2 = hex_value_json(cur[2]);
-          int h3 = hex_value_json(cur[3]);
-          int h4 = hex_value_json(cur[4]);
-          int codepoint = (h1 << 12) | (h2 << 8) | (h3 << 4) | h4;
-          if (codepoint < 128) {
-            translated = (char)codepoint;
-            cur += 4;
-          } else {
-            translated = '?';
-            cur += 4;
-          }
-        }
-        break;
-      }
-      default:
-        break;
-      }
-      *ptr++ = translated;
-      remaining--;
-      cur++;
-      continue;
+  for (size_t i = 0; i < positions->count; i++) {
+    if (positions->entries[i].tracker_id && strcmp(positions->entries[i].tracker_id, tracker_id) == 0) {
+      return positions->entries[i].position;
     }
-    if (*cur == '"') {
-      *ptr = '\0';
-      return 0;
+  }
+  return NULL;
+}
+
+static int tracker_positions_set(struct tracker_positions *positions,
+                                 const char *tracker_id,
+                                 const char *position) {
+  if (!positions || !tracker_id) {
+    return -1;
+  }
+  for (size_t i = 0; i < positions->count; i++) {
+    if (positions->entries[i].tracker_id && strcmp(positions->entries[i].tracker_id, tracker_id) == 0) {
+      if (positions->entries[i].position && position && strcmp(positions->entries[i].position, position) == 0) {
+        return 0;
+      }
+      free(positions->entries[i].position);
+      positions->entries[i].position = position ? daemon_dup_string(position) : NULL;
+      return positions->entries[i].position || !position ? 0 : -1;
     }
-    *ptr++ = *cur++;
-    remaining--;
   }
-  *ptr = '\0';
-  return 0;
-}
 
-static int json_extract_optional_string(const char *json, const char *key, char *out, size_t out_size) {
-  if (json_extract_string(json, key, out, out_size) == 0) {
-    return 0;
-  }
-  if (out_size > 0) {
-    out[0] = '\0';
-  }
-  return -1;
-}
-
-static int json_extract_double(const char *json,
-                               const char *key,
-                               double *out) {
-  if (!json || !key || !out) {
+  struct tracker_position_entry *new_entries = realloc(positions->entries,
+                                                       (positions->count + 1) * sizeof(*new_entries));
+  if (!new_entries) {
     return -1;
   }
-  char needle[64];
-  snprintf(needle, sizeof(needle), "\"%s\":", key);
-  const char *start = strstr(json, needle);
-  if (!start) {
+  positions->entries = new_entries;
+  positions->entries[positions->count].tracker_id = daemon_dup_string(tracker_id);
+  positions->entries[positions->count].position = position ? daemon_dup_string(position) : NULL;
+  if (!positions->entries[positions->count].tracker_id || (position && !positions->entries[positions->count].position)) {
+    free(positions->entries[positions->count].tracker_id);
+    free(positions->entries[positions->count].position);
     return -1;
   }
-  start += strlen(needle);
-  while (*start == ' ' || *start == '\t') {
-    ++start;
-  }
-  char *endptr = NULL;
-  double value = strtod(start, &endptr);
-  if (start == endptr) {
-    return -1;
-  }
-  *out = value;
+  positions->count++;
   return 0;
 }
 
@@ -695,7 +643,7 @@ int main(int argc, char **argv) {
   const amqp_channel_t INPUT_CHANNEL = 1;
   const amqp_channel_t OUTPUT_CHANNEL = 1;
 
-  char *last_position = NULL;
+  struct tracker_positions tracker_positions = {0};
 
   struct timeval timeout;
   timeout.tv_sec = 1;
@@ -748,62 +696,113 @@ int main(int argc, char **argv) {
         memcpy(body, envelope.message.body.bytes, envelope.message.body.len);
         body[envelope.message.body.len] = '\0';
 
-        char tracker_id[128];
-        if (json_extract_string(body, "tracker_id", tracker_id, sizeof(tracker_id)) != 0) {
-          log_message(LOG_WARN, cfg.log_level, "Missing tracker_id in parsed event");
+        json_error_t error;
+        json_t *root = json_loads(body, 0, &error);
+        if (!root) {
+          log_message(LOG_WARN,
+                      cfg.log_level,
+                      "Invalid JSON payload (%s at line %d column %d)",
+                      error.text,
+                      error.line,
+                      error.column);
         } else {
-          double latitude = 0.0;
-          double longitude = 0.0;
-          if (json_extract_double(body, "latitude", &latitude) != 0 ||
-              json_extract_double(body, "longitude", &longitude) != 0) {
-            log_message(LOG_WARN, cfg.log_level, "Missing latitude/longitude in parsed event");
-          } else {
+          do {
+            if (!json_is_object(root)) {
+              log_message(LOG_WARN, cfg.log_level, "Parsed event is not a JSON object");
+              break;
+            }
+
+            json_t *tracker_id_val = json_object_get(root, "tracker_id");
+            if (!tracker_id_val || !json_is_string(tracker_id_val)) {
+              log_message(LOG_WARN, cfg.log_level, "Missing tracker_id in parsed event");
+              break;
+            }
+            const char *tracker_id = json_string_value(tracker_id_val);
+
+            json_t *lat_val = json_object_get(root, "latitude");
+            json_t *lon_val = json_object_get(root, "longitude");
+            if (!lat_val || !lon_val || !json_is_number(lat_val) || !json_is_number(lon_val)) {
+              log_message(LOG_WARN, cfg.log_level, "Missing latitude/longitude in parsed event");
+              break;
+            }
+
+            double latitude = json_number_value(lat_val);
+            double longitude = json_number_value(lon_val);
             const char *position = location_resolver_resolve(&resolver, latitude, longitude);
-            if (position && (!last_position || strcmp(last_position, position) != 0)) {
-              char timestamp_buf[64];
-              if (json_extract_optional_string(body, "timestamp", timestamp_buf, sizeof(timestamp_buf)) != 0) {
-                char date_buf[32];
-                char time_buf[32];
-                if (json_extract_string(body, "date", date_buf, sizeof(date_buf)) == 0 &&
-                    json_extract_string(body, "time", time_buf, sizeof(time_buf)) == 0) {
-                  snprintf(timestamp_buf, sizeof(timestamp_buf), "%s %s", date_buf, time_buf);
-                } else {
-                  timestamp_buf[0] = '\0';
-                }
-              }
+            const char *previous_position = tracker_positions_get(&tracker_positions, tracker_id);
+            if (!position || (previous_position && strcmp(previous_position, position) == 0)) {
+              break;
+            }
 
-              char json_out[256];
-              if (timestamp_buf[0]) {
-                snprintf(json_out,
-                         sizeof(json_out),
-                         "{\"tracker_id\":\"%s\",\"timestamp\":\"%s\",\"position\":\"%s\"}",
-                         tracker_id,
-                         timestamp_buf,
-                         position);
-              } else {
-                snprintf(json_out,
-                         sizeof(json_out),
-                         "{\"tracker_id\":\"%s\",\"position\":\"%s\"}",
-                         tracker_id,
-                         position);
+            const char *timestamp = NULL;
+            json_t *timestamp_val = json_object_get(root, "timestamp");
+            if (timestamp_val && json_is_string(timestamp_val)) {
+              timestamp = json_string_value(timestamp_val);
+            }
+            char timestamp_buf[64];
+            timestamp_buf[0] = '\0';
+            if (!timestamp || !*timestamp) {
+              const char *date = NULL;
+              const char *time = NULL;
+              json_t *date_val = json_object_get(root, "date");
+              json_t *time_val = json_object_get(root, "time");
+              if (date_val && json_is_string(date_val)) {
+                date = json_string_value(date_val);
               }
-
-              if (publish_event(output_conn,
-                                OUTPUT_CHANNEL,
-                                cfg.output_exchange,
-                                cfg.output_routing_key,
-                                json_out,
-                                strlen(json_out),
-                                cfg.log_level) == 0) {
-                free(last_position);
-                last_position = daemon_dup_string(position);
-              } else {
-                result = -1;
-                daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
-                output_conn = NULL;
+              if (time_val && json_is_string(time_val)) {
+                time = json_string_value(time_val);
+              }
+              if (date && time) {
+                snprintf(timestamp_buf, sizeof(timestamp_buf), "%s %s", date, time);
+                timestamp = timestamp_buf;
               }
             }
-          }
+
+            json_t *out_obj = json_object();
+            if (!out_obj) {
+              log_message(LOG_WARN, cfg.log_level, "Failed to allocate JSON object for publish");
+              break;
+            }
+            int rc = 0;
+            rc |= json_object_set_new(out_obj, "tracker_id", json_string(tracker_id));
+            rc |= json_object_set_new(out_obj, "position", json_string(position));
+            if (timestamp && *timestamp) {
+              rc |= json_object_set_new(out_obj, "timestamp", json_string(timestamp));
+            }
+            if (rc != 0) {
+              log_message(LOG_WARN, cfg.log_level, "Failed to build JSON payload for publish");
+              json_decref(out_obj);
+              break;
+            }
+
+            char *json_out = json_dumps(out_obj, JSON_COMPACT);
+            json_decref(out_obj);
+            if (!json_out) {
+              log_message(LOG_WARN, cfg.log_level, "Failed to serialize JSON payload");
+              break;
+            }
+
+            if (publish_event(output_conn,
+                              OUTPUT_CHANNEL,
+                              cfg.output_exchange,
+                              cfg.output_routing_key,
+                              json_out,
+                              strlen(json_out),
+                              cfg.log_level) == 0) {
+              if (tracker_positions_set(&tracker_positions, tracker_id, position) != 0) {
+                log_message(LOG_WARN,
+                            cfg.log_level,
+                            "Failed to track last position for %s",
+                            tracker_id);
+              }
+            } else {
+              result = -1;
+              daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
+              output_conn = NULL;
+            }
+            free(json_out);
+          } while (0);
+          json_decref(root);
         }
         free(body);
       }
@@ -817,7 +816,7 @@ int main(int argc, char **argv) {
     amqp_destroy_envelope(&envelope);
   }
 
-  free(last_position);
+  tracker_positions_free(&tracker_positions);
   daemon_amqp_close(input_conn, INPUT_CHANNEL);
   daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
   location_resolver_free(&resolver);

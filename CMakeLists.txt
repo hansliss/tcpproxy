@@ -25,6 +25,13 @@ endif()
 
 find_package(LibXml2 REQUIRED)
 
+find_path(JANSSON_INCLUDE_DIR jansson.h)
+find_library(JANSSON_LIBRARY jansson)
+
+if(NOT JANSSON_INCLUDE_DIR OR NOT JANSSON_LIBRARY)
+  message(FATAL_ERROR "libjansson not found - please install jansson development files")
+endif()
+
 add_executable(tcpproxy
   tcpproxy.c
   observer.c
@@ -46,19 +53,19 @@ add_executable(daemon_common_tests
   tests/daemon_common_test.c
   daemon_common.c
 )
-target_include_directories(daemon_common_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(daemon_common_tests PRIVATE ${RABBITMQ_LIBRARY})
+target_include_directories(daemon_common_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${JANSSON_INCLUDE_DIR})
+target_link_libraries(daemon_common_tests PRIVATE ${RABBITMQ_LIBRARY} ${JANSSON_LIBRARY})
 add_test(NAME daemon_common_tests COMMAND daemon_common_tests)
 
 target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")
 
-target_include_directories(tcpproxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR})
-target_include_directories(cat_location_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${LIBXML2_INCLUDE_DIRS})
-target_include_directories(tracker_parser_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${PCRE2_INCLUDE_DIR})
+target_include_directories(tcpproxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${JANSSON_INCLUDE_DIR})
+target_include_directories(cat_location_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${LIBXML2_INCLUDE_DIRS} ${JANSSON_INCLUDE_DIR})
+target_include_directories(tracker_parser_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${RABBITMQ_INCLUDE_DIR} ${PCRE2_INCLUDE_DIR} ${JANSSON_INCLUDE_DIR})
 
-target_link_libraries(tcpproxy PRIVATE ${RABBITMQ_LIBRARY})
-target_link_libraries(cat_location_daemon PRIVATE ${RABBITMQ_LIBRARY} ${LIBXML2_LIBRARIES})
-target_link_libraries(tracker_parser_daemon PRIVATE ${RABBITMQ_LIBRARY} ${PCRE2_LIBRARY})
+target_link_libraries(tcpproxy PRIVATE ${RABBITMQ_LIBRARY} ${JANSSON_LIBRARY})
+target_link_libraries(cat_location_daemon PRIVATE ${RABBITMQ_LIBRARY} ${LIBXML2_LIBRARIES} ${JANSSON_LIBRARY})
+target_link_libraries(tracker_parser_daemon PRIVATE ${RABBITMQ_LIBRARY} ${PCRE2_LIBRARY} ${JANSSON_LIBRARY})
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(tcpproxy PRIVATE -Wall)

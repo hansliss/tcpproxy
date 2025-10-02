@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <jansson.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -469,75 +470,6 @@ static const char *direction_to_string(enum observer_direction direction) {
   return direction == OBSERVER_DIR_CLIENT ? "client" : "server";
 }
 
-/* Minimal JSON string escaper for the helper protocol. */
-static char *json_escape(const char *input, size_t len) {
-  if (!input) {
-    return strdup("");
-  }
-  size_t extra = 0;
-  for (size_t i = 0; i < len; i++) {
-    unsigned char c = (unsigned char)input[i];
-    if (c == '"' || c == '\\' || c == '/' ) {
-      extra += 1;
-    } else if (c < 0x20) {
-      extra += 5;
-    }
-  }
-  size_t out_len = len + extra + 1;
-  char *out = (char *)malloc(out_len);
-  if (!out) {
-    return NULL;
-  }
-  char *p = out;
-  for (size_t i = 0; i < len; i++) {
-    unsigned char c = (unsigned char)input[i];
-    switch (c) {
-    case '"':
-      *(p++) = '\\';
-      *(p++) = '"';
-      break;
-    case '\\':
-      *(p++) = '\\';
-      *(p++) = '\\';
-      break;
-    case '/':
-      *(p++) = '\\';
-      *(p++) = '/';
-      break;
-    case '\b':
-      *(p++) = '\\';
-      *(p++) = 'b';
-      break;
-    case '\f':
-      *(p++) = '\\';
-      *(p++) = 'f';
-      break;
-    case '\n':
-      *(p++) = '\\';
-      *(p++) = 'n';
-      break;
-    case '\r':
-      *(p++) = '\\';
-      *(p++) = 'r';
-      break;
-    case '\t':
-      *(p++) = '\\';
-      *(p++) = 't';
-      break;
-    default:
-      if (c < 0x20) {
-        sprintf(p, "\\u%04x", c);
-        p += 6;
-      } else {
-        *(p++) = (char)c;
-      }
-      break;
-    }
-  }
-  *p = '\0';
-  return out;
-}
-
 /* Allow overriding the helper path through an environment variable. */
 /* Write observer events to the logfile sink. */
 static void emit_event_file(void *ctx,
@@ -585,41 +517,37 @@ static void emit_event_amqp(void *ctx,
   if (!instance || !instance->global || !instance->global->amqp) {
     return;
   }
-  char *escaped_timestamp = json_escape(timestamp, strlen(timestamp));
-  char *escaped_direction = json_escape(direction_to_string(direction), strlen(direction_to_string(direction)));
-  char *escaped_ip = json_escape(instance->client_ip, strlen(instance->client_ip));
-  char *escaped_conn = json_escape(instance->connection_id, strlen(instance->connection_id));
-  char *escaped_payload = json_escape(message, message_len);
-  if (!escaped_timestamp || !escaped_direction || !escaped_ip || !escaped_conn || !escaped_payload) {
-    free(escaped_timestamp);
-    free(escaped_direction);
-    free(escaped_ip);
-    free(escaped_conn);
-    free(escaped_payload);
+  json_t *root = json_object();
+  if (!root) {
     return;
   }
-  size_t total = strlen(escaped_timestamp) + strlen(escaped_direction) +
-                 strlen(escaped_ip) + strlen(escaped_conn) + strlen(escaped_payload) + 80;
-  char *line = (char *)malloc(total);
-  if (line) {
-    int written = snprintf(line,
-                           total,
-                           "{\"timestamp\":\"%s\",\"direction\":\"%s\",\"client_ip\":\"%s\",\"connection_id\":\"%s\",\"payload\":\"%s\"}",
-                           escaped_timestamp,
-                           escaped_direction,
-                           escaped_ip,
-                           escaped_conn,
-                           escaped_payload);
-    if (written > 0) {
-      observer_amqp_publish(instance->global, line, (size_t)written);
-    }
-    free(line);
+  const char *direction_str = direction_to_string(direction);
+  json_t *timestamp_json = timestamp ? json_string(timestamp) : json_string("");
+  json_t *direction_json = direction_str ? json_string(direction_str) : json_string("");
+  json_t *ip_json = json_string(instance->client_ip);
+  json_t *conn_json = json_string(instance->connection_id);
+  json_t *payload_json = json_stringn_nocheck(message, message_len);
+  if (!timestamp_json || !direction_json || !ip_json || !conn_json || !payload_json) {
+    json_decref(timestamp_json);
+    json_decref(direction_json);
+    json_decref(ip_json);
+    json_decref(conn_json);
+    json_decref(payload_json);
+    json_decref(root);
+    return;
   }
-  free(escaped_timestamp);
-  free(escaped_direction);
-  free(escaped_ip);
-  free(escaped_conn);
-  free(escaped_payload);
+  json_object_set_new(root, "timestamp", timestamp_json);
+  json_object_set_new(root, "direction", direction_json);
+  json_object_set_new(root, "client_ip", ip_json);
+  json_object_set_new(root, "connection_id", conn_json);
+  json_object_set_new(root, "payload", payload_json);
+
+  char *serialized = json_dumps(root, JSON_COMPACT);
+  if (serialized) {
+    observer_amqp_publish(instance->global, serialized, strlen(serialized));
+    free(serialized);
+  }
+  json_decref(root);
 }
 
 struct observer_instance *observer_instance_create(struct observer_global *global,
