@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "daemon_common.h"
 
@@ -239,113 +240,52 @@ static int apply_config_key(struct daemon_config *cfg, const char *key, const ch
   return 0;
 }
 
-static amqp_connection_state_t open_connection(const char *uri_string,
-                                               int log_level) {
-  struct daemon_uri_parts parts;
-  if (daemon_parse_amqp_uri(uri_string, &parts) != 0) {
-    log_message(LOG_ERROR, log_level, "Invalid AMQP URI: %s", uri_string);
+static const char *k_component = "tracker_parser_daemon";
+
+static amqp_connection_state_t connect_input(struct daemon_config *cfg,
+                                             amqp_channel_t channel) {
+  struct daemon_amqp_config acfg = {
+      .uri = cfg->input_uri,
+      .exchange = cfg->input_exchange,
+      .routing_key = cfg->input_routing_key,
+      .log_level = cfg->log_level,
+      .component_name = k_component};
+
+  amqp_connection_state_t conn = daemon_amqp_open(&acfg,
+                                                  channel,
+                                                  cfg->input_exchange && *cfg->input_exchange,
+                                                  1,
+                                                  0,
+                                                  (daemon_log_fn)log_message);
+  if (!conn) {
     return NULL;
   }
 
-  amqp_connection_state_t conn = amqp_new_connection();
-  amqp_socket_t *socket = amqp_tcp_socket_new(conn);
-  if (!socket) {
-    log_message(LOG_ERROR, log_level, "Failed to allocate AMQP socket");
-    amqp_destroy_connection(conn);
+  if (daemon_amqp_declare_queue(conn,
+                                channel,
+                                cfg->input_queue,
+                                cfg->input_exchange,
+                                cfg->input_routing_key,
+                                1,
+                                cfg->log_level,
+                                k_component,
+                                (daemon_log_fn)log_message) != 0) {
+    daemon_amqp_close(conn, channel);
     return NULL;
-  }
-  int status = amqp_socket_open(socket, parts.host, parts.port);
-  if (status != AMQP_STATUS_OK) {
-    log_message(LOG_ERROR, log_level, "Failed to open AMQP socket to %s:%d (%s)",
-                parts.host, parts.port, amqp_error_string2(status));
-    amqp_destroy_connection(conn);
-    return NULL;
-  }
-  amqp_rpc_reply_t reply = amqp_login(conn,
-                                      parts.vhost[0] ? parts.vhost : "/",
-                                      0,
-                                      131072,
-                                      60,
-                                      AMQP_SASL_METHOD_PLAIN,
-                                      parts.username,
-                                      parts.password);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "AMQP login failed: %s", amqp_error_string2(reply.library_error));
-    amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-    amqp_destroy_connection(conn);
-    return NULL;
-  }
-  return conn;
-}
-
-static int open_channel(amqp_connection_state_t conn, amqp_channel_t channel, int log_level) {
-  amqp_channel_open(conn, channel);
-  amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "Failed to open channel %u", channel);
-    return -1;
-  }
-  return 0;
-}
-
-static int declare_input(amqp_connection_state_t conn,
-                         amqp_channel_t channel,
-                         const char *queue,
-                         const char *exchange,
-                         const char *routing_key,
-                         int log_level) {
-  amqp_table_t args = {0};
-  amqp_queue_declare(conn,
-                     channel,
-                     amqp_cstring_bytes(queue),
-                     0,
-                     1,
-                     0,
-                     0,
-                     args);
-  amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "Queue declare failed for %s", queue);
-    return -1;
-  }
-  if (exchange && *exchange) {
-    amqp_exchange_declare(conn,
-                          channel,
-                          amqp_cstring_bytes(exchange),
-                          amqp_cstring_bytes("topic"),
-                          0,
-                          1,
-                          0,
-                          0,
-                          args);
-    reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      log_message(LOG_ERROR, log_level, "Exchange declare failed for %s", exchange);
-      return -1;
-    }
-    amqp_queue_bind(conn,
-                    channel,
-                    amqp_cstring_bytes(queue),
-                    amqp_cstring_bytes(exchange),
-                    amqp_cstring_bytes(routing_key && *routing_key ? routing_key : "#"),
-                    args);
-    reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      log_message(LOG_ERROR, log_level, "Queue bind failed for %s", queue);
-      return -1;
-    }
   }
 
   amqp_basic_qos(conn, channel, 0, 1, 0);
-  reply = amqp_get_rpc_reply(conn);
+  amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
   if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "Failed to set basic.qos");
-    return -1;
+    log_message(LOG_ERROR, cfg->log_level, "Failed to set basic.qos");
+    daemon_amqp_close(conn, channel);
+    return NULL;
   }
 
+  amqp_table_t args = {0};
   amqp_basic_consume(conn,
                      channel,
-                     amqp_cstring_bytes(queue),
+                     amqp_cstring_bytes(cfg->input_queue),
                      amqp_empty_bytes,
                      0,
                      0,
@@ -353,56 +293,29 @@ static int declare_input(amqp_connection_state_t conn,
                      args);
   reply = amqp_get_rpc_reply(conn);
   if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "basic.consume failed for %s", queue);
-    return -1;
+    log_message(LOG_ERROR, cfg->log_level, "basic.consume failed for %s", cfg->input_queue);
+    daemon_amqp_close(conn, channel);
+    return NULL;
   }
-  return 0;
+
+  return conn;
 }
 
-static int declare_output(amqp_connection_state_t conn,
-                          amqp_channel_t channel,
-                          const char *exchange,
-                          const char *routing_key,
-                          int log_level) {
-  amqp_table_t args = {0};
-  if (exchange && *exchange) {
-    amqp_exchange_declare(conn,
-                          channel,
-                          amqp_cstring_bytes(exchange),
-                          amqp_cstring_bytes("topic"),
-                          0,
-                          1,
-                          0,
-                          0,
-                          args);
-    amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      log_message(LOG_ERROR, log_level, "Failed to declare exchange %s", exchange);
-      return -1;
-    }
-  } else {
-    amqp_queue_declare(conn,
-                       channel,
-                       amqp_cstring_bytes(routing_key),
-                       0,
-                       1,
-                       0,
-                       0,
-                       args);
-    amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      log_message(LOG_ERROR, log_level, "Failed to declare output queue %s", routing_key);
-      return -1;
-    }
-  }
+static amqp_connection_state_t connect_output(struct daemon_config *cfg,
+                                              amqp_channel_t channel) {
+  struct daemon_amqp_config acfg = {
+      .uri = cfg->output_uri,
+      .exchange = cfg->output_exchange,
+      .routing_key = cfg->output_routing_key,
+      .log_level = cfg->log_level,
+      .component_name = k_component};
 
-  amqp_confirm_select(conn, channel);
-  amqp_rpc_reply_t reply = amqp_get_rpc_reply(conn);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    log_message(LOG_ERROR, log_level, "Failed to enable confirm select");
-    return -1;
-  }
-  return 0;
+  return daemon_amqp_open(&acfg,
+                          channel,
+                          cfg->output_exchange && *cfg->output_exchange,
+                          1,
+                          1,
+                          (daemon_log_fn)log_message);
 }
 
 static int json_extract_string(const char *json,
@@ -691,57 +604,6 @@ static char *build_output_json(const char *tracker_id,
   return out;
 }
 
-static int wait_for_publish_ack(amqp_connection_state_t conn,
-                                amqp_channel_t channel,
-                                int log_level) {
-  while (1) {
-    amqp_frame_t frame;
-    int wait_status = amqp_simple_wait_frame(conn, &frame);
-    if (wait_status != AMQP_STATUS_OK) {
-      log_message(LOG_ERROR, log_level, "Waiting for publish confirmation failed (%s)",
-                  amqp_error_string2(wait_status));
-      return -1;
-    }
-    if (frame.frame_type != AMQP_FRAME_METHOD) {
-      continue;
-    }
-    if (frame.channel != channel) {
-      continue;
-    }
-    switch (frame.payload.method.id) {
-    case AMQP_BASIC_ACK_METHOD:
-      return 0;
-    case AMQP_BASIC_NACK_METHOD:
-      log_message(LOG_ERROR, log_level, "Publish negatively acknowledged by broker");
-      return -1;
-    case AMQP_BASIC_RETURN_METHOD: {
-      amqp_basic_return_t *ret = (amqp_basic_return_t *)frame.payload.method.decoded;
-      amqp_message_t message;
-      amqp_rpc_reply_t read_reply = amqp_read_message(conn, channel, &message, 0);
-      if (read_reply.reply_type == AMQP_RESPONSE_NORMAL) {
-        amqp_destroy_message(&message);
-      }
-      log_message(LOG_ERROR,
-                  log_level,
-                  "Publish returned by broker (code=%u text=%.*s exchange=%.*s routing_key=%.*s)",
-                  ret->reply_code,
-                  (int)ret->reply_text.len,
-                  (char *)ret->reply_text.bytes,
-                  (int)ret->exchange.len,
-                  (char *)ret->exchange.bytes,
-                  (int)ret->routing_key.len,
-                  (char *)ret->routing_key.bytes);
-      return -1;
-    }
-    default:
-      if (log_level >= LOG_DEBUG) {
-        log_message(LOG_DEBUG, log_level, "Ignoring frame method %u", frame.payload.method.id);
-      }
-      break;
-    }
-  }
-}
-
 static int publish_event(amqp_connection_state_t conn,
                          amqp_channel_t channel,
                          const char *exchange,
@@ -754,39 +616,17 @@ static int publish_event(amqp_connection_state_t conn,
   props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
   props.content_type = amqp_cstring_bytes("application/json");
   props.delivery_mode = 2;
-
-  amqp_bytes_t message_bytes;
-  message_bytes.len = body_len;
-  message_bytes.bytes = (void *)body;
-
-  amqp_bytes_t exchange_bytes = (exchange && *exchange) ? amqp_cstring_bytes(exchange) : amqp_empty_bytes;
-  amqp_bytes_t routing_bytes = amqp_cstring_bytes(routing_key);
-
-  int status = amqp_basic_publish(conn,
-                                  channel,
-                                  exchange_bytes,
-                                  routing_bytes,
-                                  1,
-                                  0,
-                                  &props,
-                                  message_bytes);
-  if (status != AMQP_STATUS_OK) {
-    log_message(LOG_ERROR, log_level, "basic.publish failed: %s", amqp_error_string2(status));
-    return -1;
-  }
-  if (wait_for_publish_ack(conn, channel, log_level) != 0) {
-    return -1;
-  }
-  return 0;
-}
-
-static void close_connection(amqp_connection_state_t conn, amqp_channel_t channel) {
-  if (!conn) {
-    return;
-  }
-  amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
-  amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-  amqp_destroy_connection(conn);
+  return daemon_amqp_publish(conn,
+                             channel,
+                             exchange,
+                             routing_key,
+                             body,
+                             body_len,
+                             &props,
+                             1,
+                             (daemon_log_fn)log_message,
+                             log_level,
+                             k_component);
 }
 
 static int process_message(const char *json,
@@ -1066,75 +906,52 @@ int main(int argc, char **argv) {
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
-  amqp_connection_state_t input_conn = open_connection(cfg.input_uri, cfg.log_level);
-  if (!input_conn) {
-    free_regexes();
-    free_config(&cfg);
-    return 1;
-  }
-  amqp_connection_state_t output_conn = open_connection(cfg.output_uri, cfg.log_level);
-  if (!output_conn) {
-    close_connection(input_conn, 1);
-    free_regexes();
-    free_config(&cfg);
-    return 1;
-  }
-
+  amqp_connection_state_t input_conn = NULL;
+  amqp_connection_state_t output_conn = NULL;
   const amqp_channel_t INPUT_CHANNEL = 1;
   const amqp_channel_t OUTPUT_CHANNEL = 1;
-
-  if (open_channel(input_conn, INPUT_CHANNEL, cfg.log_level) != 0 ||
-      open_channel(output_conn, OUTPUT_CHANNEL, cfg.log_level) != 0) {
-    close_connection(input_conn, INPUT_CHANNEL);
-    close_connection(output_conn, OUTPUT_CHANNEL);
-    free_regexes();
-    free_config(&cfg);
-    return 1;
-  }
-
-  if (declare_input(input_conn,
-                    INPUT_CHANNEL,
-                    cfg.input_queue,
-                    cfg.input_exchange,
-                    cfg.input_routing_key,
-                    cfg.log_level) != 0) {
-    close_connection(input_conn, INPUT_CHANNEL);
-    close_connection(output_conn, OUTPUT_CHANNEL);
-    free_regexes();
-    free_config(&cfg);
-    return 1;
-  }
-
-  if (declare_output(output_conn,
-                     OUTPUT_CHANNEL,
-                     cfg.output_exchange,
-                     cfg.output_routing_key,
-                     cfg.log_level) != 0) {
-    close_connection(input_conn, INPUT_CHANNEL);
-    close_connection(output_conn, OUTPUT_CHANNEL);
-    free_regexes();
-    free_config(&cfg);
-    return 1;
-  }
 
   struct timeval timeout;
   timeout.tv_sec = 1;
   timeout.tv_usec = 0;
 
   while (!g_stop) {
+    if (!input_conn) {
+      input_conn = connect_input(&cfg, INPUT_CHANNEL);
+      if (!input_conn) {
+        log_message(LOG_WARN, cfg.log_level, "Input connection unavailable, retrying...");
+        sleep(1);
+        continue;
+      }
+    }
+    if (!output_conn) {
+      output_conn = connect_output(&cfg, OUTPUT_CHANNEL);
+      if (!output_conn) {
+        log_message(LOG_WARN, cfg.log_level, "Output connection unavailable, retrying...");
+        sleep(1);
+        continue;
+      }
+    }
+
     amqp_envelope_t envelope;
     amqp_maybe_release_buffers(input_conn);
     amqp_rpc_reply_t reply = amqp_consume_message(input_conn, &envelope, &timeout, 0);
     if (reply.reply_type == AMQP_RESPONSE_LIBRARY_EXCEPTION &&
         reply.library_error == AMQP_STATUS_TIMEOUT) {
-      /* Give the output connection a chance to process heartbeats. */
-      amqp_frame_t frame;
-      struct timeval zero = {0, 0};
-      amqp_simple_wait_frame_noblock(output_conn, &frame, &zero);
+      if (daemon_amqp_wait_heartbeat(output_conn) != 0) {
+        log_message(LOG_WARN, cfg.log_level, "Output heartbeat failed, reconnecting");
+        daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
+        output_conn = NULL;
+      }
       continue;
     }
     if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      log_message(LOG_WARN, cfg.log_level, "Consume error: %s", amqp_error_string2(reply.library_error));
+      log_message(LOG_WARN,
+                  cfg.log_level,
+                  "Consume error: %s",
+                  amqp_error_string2(reply.library_error));
+      daemon_amqp_close(input_conn, INPUT_CHANNEL);
+      input_conn = NULL;
       continue;
     }
 
@@ -1158,12 +975,14 @@ int main(int argc, char **argv) {
       amqp_basic_ack(input_conn, INPUT_CHANNEL, envelope.delivery_tag, 0);
     } else {
       amqp_basic_nack(input_conn, INPUT_CHANNEL, envelope.delivery_tag, 0, 1);
+      daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
+      output_conn = NULL;
     }
     amqp_destroy_envelope(&envelope);
   }
 
-  close_connection(input_conn, INPUT_CHANNEL);
-  close_connection(output_conn, OUTPUT_CHANNEL);
+  daemon_amqp_close(input_conn, INPUT_CHANNEL);
+  daemon_amqp_close(output_conn, OUTPUT_CHANNEL);
   free_regexes();
   daemon_pidfile_cleanup();
   free_config(&cfg);

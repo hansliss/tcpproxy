@@ -117,10 +117,11 @@ python3 tests/amqp_consumer_example.py \
 
 ### Location Daemon
 
-`cat_location_daemon` (installed under `libexec/tcpproxy`) consumes observer
-events from RabbitMQ, matches them against the placemarks in `Locations.kml`,
-and republishes a location update whenever the nearest named position changes.
-Each message contains the tracker ID, timestamp, and position string.
+`cat_location_daemon` (installed under `libexec/tcpproxy`) consumes parsed
+tracker events from RabbitMQ (the output of `tracker_parser_daemon`), matches
+them against the placemarks in `Locations.kml`, and republishes a location
+update whenever the nearest named position changes. Each message contains the
+tracker ID, timestamp, and position string.
 
 Copy `/usr/local/etc/Locations.kml.sample` to `/usr/local/etc/Locations.kml`
 and edit it to match your real-world placemarks before launching the daemon.

@@ -47,6 +47,7 @@ add_executable(daemon_common_tests
   daemon_common.c
 )
 target_include_directories(daemon_common_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(daemon_common_tests PRIVATE ${RABBITMQ_LIBRARY})
 add_test(NAME daemon_common_tests COMMAND daemon_common_tests)
 
 target_compile_definitions(tcpproxy PRIVATE PRODUCT="tcpproxy" VERSION="1.0")

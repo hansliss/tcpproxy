@@ -7,11 +7,13 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "daemon_common.h"
 #include "tracker_parser.h"
 
 /*
@@ -55,69 +57,23 @@ struct observer_amqp {
 
 static int observer_amqp_publish(struct observer_global *global, const char *body, size_t len);
 
+static void observer_log(int level, int configured_level, const char *fmt, ...) {
+  (void)level;
+  (void)configured_level;
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+  fputc('\n', stderr);
+}
+
 /* Trim leading/trailing ASCII whitespace in-place. */
-static char *trim_whitespace(char *value) {
-  if (!value) {
-    return NULL;
-  }
-  while (*value == ' ' || *value == '\t') {
-    value++;
-  }
-  size_t len = strlen(value);
-  while (len > 0 && (value[len - 1] == ' ' || value[len - 1] == '\t')) {
-    value[--len] = '\0';
-  }
-  return value;
-}
+static inline char *trim_whitespace(char *value) { return daemon_trim_whitespace(value); }
 
-static char *dup_string(const char *value) {
-  if (!value) {
-    return NULL;
-  }
-  char *copy = strdup(value);
-  return copy;
-}
+static inline char *dup_string(const char *value) { return daemon_dup_string(value); }
 
-static int hex_value(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return 10 + (c - 'a');
-  }
-  if (c >= 'A' && c <= 'F') {
-    return 10 + (c - 'A');
-  }
-  return -1;
-}
-
-static char *percent_decode_string(const char *input) {
-  if (!input) {
-    return NULL;
-  }
-  size_t len = strlen(input);
-  char *out = (char *)malloc(len + 1);
-  if (!out) {
-    return NULL;
-  }
-  size_t oi = 0;
-  for (size_t i = 0; i < len; i++) {
-    if (input[i] == '%' && i + 2 < len && isxdigit((unsigned char)input[i + 1]) && isxdigit((unsigned char)input[i + 2])) {
-      int hi = hex_value(input[i + 1]);
-      int lo = hex_value(input[i + 2]);
-      if (hi >= 0 && lo >= 0) {
-        out[oi++] = (char)((hi << 4) | lo);
-        i += 2;
-        continue;
-      }
-    } else if (input[i] == '+') {
-      out[oi++] = ' ';
-      continue;
-    }
-    out[oi++] = input[i];
-  }
-  out[oi] = '\0';
-  return out;
+static inline char *percent_decode_string(const char *input) {
+  return daemon_percent_decode(input, 1);
 }
 
 static int append_query_pair(char **dest, const char *pair) {
@@ -143,132 +99,11 @@ static int append_query_pair(char **dest, const char *pair) {
   return 0;
 }
 
-struct uri_parts {
-  char host[256];
-  char username[256];
-  char password[256];
-  char vhost[256];
-  int port;
-};
-
-static int parse_amqp_uri(const char *uri, struct uri_parts *out) {
-  if (!uri || !out || strncmp(uri, "amqp://", 7) != 0) {
-    return -1;
-  }
-  memset(out, 0, sizeof(*out));
-  strcpy(out->username, "guest");
-  strcpy(out->password, "guest");
-  strcpy(out->vhost, "/");
-  out->port = 5672;
-
-  const char *cursor = uri + 7;
-  const char *at = strchr(cursor, '@');
-  if (at) {
-    const char *cred = cursor;
-    const char *col = memchr(cred, ':', (size_t)(at - cred));
-    if (col) {
-      size_t ulen = (size_t)(col - cred);
-      size_t plen = (size_t)(at - col - 1);
-      char *user = strndup(cred, ulen);
-      char *pass = strndup(col + 1, plen);
-      if (!user || !pass) {
-        free(user);
-        free(pass);
-        return -1;
-      }
-      char *decoded_user = percent_decode_string(user);
-      char *decoded_pass = percent_decode_string(pass);
-      free(user);
-      free(pass);
-      if (!decoded_user || !decoded_pass) {
-        free(decoded_user);
-        free(decoded_pass);
-        return -1;
-      }
-      strncpy(out->username, decoded_user, sizeof(out->username) - 1);
-      strncpy(out->password, decoded_pass, sizeof(out->password) - 1);
-      free(decoded_user);
-      free(decoded_pass);
-    } else {
-      char *user = strndup(cred, (size_t)(at - cred));
-      if (!user) {
-        return -1;
-      }
-      char *decoded_user = percent_decode_string(user);
-      free(user);
-      if (!decoded_user) {
-        return -1;
-      }
-      strncpy(out->username, decoded_user, sizeof(out->username) - 1);
-      free(decoded_user);
-    }
-    cursor = at + 1;
-  }
-
-  const char *slash = strchr(cursor, '/');
-  const char *host_part = cursor;
-  char hostbuf[256];
-  if (slash) {
-    size_t host_len = (size_t)(slash - cursor);
-    if (host_len >= sizeof(hostbuf)) {
-      return -1;
-    }
-    memcpy(hostbuf, cursor, host_len);
-    hostbuf[host_len] = '\0';
-    cursor = slash + 1;
-  } else {
-    strncpy(hostbuf, cursor, sizeof(hostbuf));
-    hostbuf[sizeof(hostbuf) - 1] = '\0';
-    cursor = NULL;
-  }
-
-  const char *colon = strchr(host_part, ':');
-  if (colon && (!slash || colon < slash)) {
-    size_t host_len = (size_t)(colon - host_part);
-    if (host_len >= sizeof(out->host)) {
-      return -1;
-    }
-    memcpy(out->host, host_part, host_len);
-    out->host[host_len] = '\0';
-    out->port = atoi(colon + 1);
-  } else {
-    strncpy(out->host, hostbuf, sizeof(out->host) - 1);
-  }
-
-  if (slash) {
-    const char *qmark = cursor ? strchr(cursor, '?') : NULL;
-    size_t vlen = cursor ? (qmark ? (size_t)(qmark - cursor) : strlen(cursor)) : 0;
-    if (vlen > 0) {
-      char *vhost_raw = strndup(cursor, vlen);
-      if (!vhost_raw) {
-        return -1;
-      }
-      char *decoded = percent_decode_string(vhost_raw);
-      free(vhost_raw);
-      if (!decoded) {
-        return -1;
-      }
-      strncpy(out->vhost, decoded, sizeof(out->vhost) - 1);
-      free(decoded);
-    }
-  }
-
-  if (out->port <= 0) {
-    out->port = 5672;
-  }
-  if (out->host[0] == '\0') {
-    strcpy(out->host, "127.0.0.1");
-  }
-  return 0;
-}
-
 static void observer_amqp_disconnect(struct observer_amqp *amqp) {
   if (!amqp || !amqp->connection) {
     return;
   }
-  amqp_channel_close(amqp->connection, amqp->channel, AMQP_REPLY_SUCCESS);
-  amqp_connection_close(amqp->connection, AMQP_REPLY_SUCCESS);
-  amqp_destroy_connection(amqp->connection);
+  daemon_amqp_close(amqp->connection, amqp->channel);
   amqp->connection = NULL;
 }
 
@@ -276,129 +111,40 @@ static int observer_amqp_connect(struct observer_amqp *amqp) {
   if (!amqp || !amqp->uri) {
     return -1;
   }
+  struct daemon_amqp_config cfg = {
+      .uri = amqp->uri,
+      .exchange = (amqp->exchange && *amqp->exchange) ? amqp->exchange : NULL,
+      .routing_key = amqp->publish_routing_key,
+      .log_level = 0,
+      .component_name = "observer"};
 
-  struct uri_parts parts;
-  if (parse_amqp_uri(amqp->uri, &parts) != 0) {
-    fprintf(stderr, "observer: invalid AMQP URI %s\n", amqp->uri);
+  amqp_connection_state_t conn = daemon_amqp_open(&cfg,
+                                                  1,
+                                                  (amqp->exchange && *amqp->exchange),
+                                                  (amqp->queue && *amqp->queue) ? 1 : 0,
+                                                  1,
+                                                  observer_log);
+  if (!conn) {
     return -1;
   }
 
-  amqp_connection_state_t conn = amqp_new_connection();
-  amqp_socket_t *socket = amqp_tcp_socket_new(conn);
-  if (!socket) {
-    amqp_destroy_connection(conn);
-    fprintf(stderr, "observer: failed to allocate AMQP socket\n");
-    return -1;
-  }
-  int status = amqp_socket_open(socket, parts.host, parts.port);
-  if (status != AMQP_STATUS_OK) {
-    fprintf(stderr, "observer: cannot connect to %s:%d (%s)\n",
-            parts.host,
-            parts.port,
-            amqp_error_string2(status));
-    amqp_destroy_connection(conn);
-    return -1;
-  }
-
-  amqp_rpc_reply_t reply = amqp_login(conn,
-                                      parts.vhost[0] ? parts.vhost : "/",
-                                      0,
-                                      131072,
-                                      60,
-                                      AMQP_SASL_METHOD_PLAIN,
-                                      parts.username,
-                                      parts.password);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    fprintf(stderr, "observer: AMQP login failed (%s)\n", amqp_error_string2(reply.library_error));
-    amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-    amqp_destroy_connection(conn);
-    return -1;
-  }
-
-  amqp_channel_t channel = 1;
-  amqp_channel_open(conn, channel);
-  reply = amqp_get_rpc_reply(conn);
-  if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-    fprintf(stderr, "observer: failed to open AMQP channel\n");
-    amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-    amqp_destroy_connection(conn);
-    return -1;
-  }
-
-  amqp_table_t args = {0};
   if (amqp->queue && *amqp->queue) {
-    amqp_queue_declare(conn,
-                       channel,
-                       amqp_cstring_bytes(amqp->queue),
-                       0,
-                       0,
-                       0,
-                       1,
-                       args);
-    reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      fprintf(stderr, "observer: queue declare failed for %s\n", amqp->queue);
-      amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
-      amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-      amqp_destroy_connection(conn);
-      return -1;
-    }
-    if (amqp->exchange && *amqp->exchange) {
-      amqp_exchange_declare(conn,
-                            channel,
-                            amqp_cstring_bytes(amqp->exchange),
-                            amqp_cstring_bytes("topic"),
-                            0,
-                            1,
-                            0,
-                            0,
-                            args);
-      reply = amqp_get_rpc_reply(conn);
-      if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-        fprintf(stderr, "observer: exchange declare failed for %s\n", amqp->exchange);
-        amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
-        amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-        amqp_destroy_connection(conn);
-        return -1;
-      }
-      const char *bind_key = (amqp->routing_key && *amqp->routing_key) ? amqp->routing_key : amqp->queue;
-      amqp_queue_bind(conn,
-                      channel,
-                      amqp_cstring_bytes(amqp->queue),
-                      amqp_cstring_bytes(amqp->exchange),
-                      amqp_cstring_bytes(bind_key),
-                      args);
-      reply = amqp_get_rpc_reply(conn);
-      if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-        fprintf(stderr, "observer: queue bind failed for %s\n", amqp->queue);
-        amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
-        amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-        amqp_destroy_connection(conn);
-        return -1;
-      }
-    }
-  } else if (amqp->exchange && *amqp->exchange) {
-    amqp_exchange_declare(conn,
-                          channel,
-                          amqp_cstring_bytes(amqp->exchange),
-                          amqp_cstring_bytes("topic"),
-                          0,
-                          1,
-                          0,
-                          0,
-                          args);
-    reply = amqp_get_rpc_reply(conn);
-    if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-      fprintf(stderr, "observer: exchange declare failed for %s\n", amqp->exchange);
-      amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
-      amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-      amqp_destroy_connection(conn);
+    if (daemon_amqp_declare_queue(conn,
+                                  1,
+                                  amqp->queue,
+                                  amqp->exchange,
+                                  amqp->routing_key,
+                                  0,
+                                  0,
+                                  "observer",
+                                  observer_log) != 0) {
+      daemon_amqp_close(conn, 1);
       return -1;
     }
   }
 
   amqp->connection = conn;
-  amqp->channel = channel;
+  amqp->channel = 1;
   return 0;
 }
 
@@ -589,35 +335,33 @@ static int observer_amqp_publish(struct observer_global *global, const char *bod
   props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG;
   props.content_type = amqp_cstring_bytes("application/json");
 
-  amqp_bytes_t exchange_bytes = (amqp->publish_exchange && *amqp->publish_exchange)
-                                    ? amqp_cstring_bytes(amqp->publish_exchange)
-                                    : amqp_empty_bytes;
-  amqp_bytes_t routing_bytes = amqp_cstring_bytes(amqp->publish_routing_key);
-  amqp_bytes_t body_bytes = {.len = len, .bytes = (void *)body};
-
-  int status = amqp_basic_publish(amqp->connection,
-                                  amqp->channel,
-                                  exchange_bytes,
-                                  routing_bytes,
-                                  0,
-                                  0,
-                                  &props,
-                                  body_bytes);
-  if (status != AMQP_STATUS_OK) {
-    fprintf(stderr, "observer: publish failed (%s), retrying\n", amqp_error_string2(status));
+  if (daemon_amqp_publish(amqp->connection,
+                          amqp->channel,
+                          amqp->publish_exchange && *amqp->publish_exchange ? amqp->publish_exchange : NULL,
+                          amqp->publish_routing_key,
+                          body,
+                          len,
+                          &props,
+                          1,
+                          observer_log,
+                          0,
+                          "observer") != 0) {
+    observer_log(0, 0, "observer: publish failed, reconnecting");
     if (observer_amqp_reconnect(amqp) != 0) {
       return -1;
     }
-    status = amqp_basic_publish(amqp->connection,
-                                amqp->channel,
-                                exchange_bytes,
-                                routing_bytes,
-                                0,
-                                0,
-                                &props,
-                                body_bytes);
-    if (status != AMQP_STATUS_OK) {
-      fprintf(stderr, "observer: publish failed after reconnect (%s)\n", amqp_error_string2(status));
+    if (daemon_amqp_publish(amqp->connection,
+                            amqp->channel,
+                            amqp->publish_exchange && *amqp->publish_exchange ? amqp->publish_exchange : NULL,
+                            amqp->publish_routing_key,
+                            body,
+                            len,
+                            &props,
+                            1,
+                            observer_log,
+                            0,
+                            "observer") != 0) {
+      observer_log(0, 0, "observer: publish failed after reconnect");
       return -1;
     }
   }
@@ -910,8 +654,9 @@ struct observer_instance *observer_instance_create(struct observer_global *globa
   if (global->mode == OBSERVER_MODE_FILE) {
     instance->log_fd = open(global->log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (instance->log_fd == -1) {
-      fprintf(stderr, "observer: cannot open log file %s: %s\n",
-              global->log_path, strerror(errno));
+      observer_log(0, 0, "observer: cannot open log file %s: %s",
+                   global->log_path,
+                   strerror(errno));
       free(instance);
       return NULL;
     }
